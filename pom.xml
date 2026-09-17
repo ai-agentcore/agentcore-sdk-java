@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>io.github.ai-agentcore</groupId>
+  <artifactId>agentcore-sdk-parent</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>AgentCore SDK for Java</name>
+  <description>Java SDK for AgentCore resources and Agent frameworks</description>
+  <licenses><license><name>Apache License, Version 2.0</name><url>https://www.apache.org/licenses/LICENSE-2.0</url></license></licenses>
+  <modules>
+    <module>core</module>
+    <module>server</module>
+    <module>spring-ai</module>
+    <module>langchain4j</module>
+    <module>agentscope</module>
+    <module>collaboration</module>
+    <module>integration-tests</module>
+    <module>examples</module>
+  </modules>
+  <properties>
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <reactor.version>3.8.7</reactor.version>
+    <jackson.version>2.20.2</jackson.version>
+    <spring-ai.version>2.0.1</spring-ai.version>
+    <langchain4j.version>1.20.0</langchain4j.version>
+    <agentscope.version>2.0.3</agentscope.version>
+  </properties>
+  <dependencyManagement><dependencies>
+    <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-annotations</artifactId><version>2.21</version></dependency>
+    <dependency><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>io.projectreactor</groupId><artifactId>reactor-core</artifactId><version>${reactor.version}</version></dependency>
+    <dependency><groupId>com.fasterxml.jackson</groupId><artifactId>jackson-bom</artifactId><version>${jackson.version}</version><type>pom</type><scope>import</scope></dependency>
+    <dependency><groupId>org.junit</groupId><artifactId>junit-bom</artifactId><version>5.13.4</version><type>pom</type><scope>import</scope></dependency>
+  </dependencies></dependencyManagement>
+  <dependencies>
+    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>io.projectreactor</groupId><artifactId>reactor-test</artifactId><version>${reactor.version}</version><scope>test</scope></dependency>
+  </dependencies>
+  <build><pluginManagement><plugins>
+    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.14.0</version></plugin>
+    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.4</version></plugin>
+    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId><version>3.4.2</version></plugin>
+  </plugins></pluginManagement></build>
+</project>

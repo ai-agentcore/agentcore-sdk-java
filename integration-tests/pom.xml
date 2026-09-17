@@ -1,0 +1,14 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk-parent</artifactId><version>0.1.0-SNAPSHOT</version></parent>
+  <artifactId>agentcore-sdk-integration-tests</artifactId>
+  <properties><maven.deploy.skip>true</maven.deploy.skip><maven.install.skip>true</maven.install.skip></properties>
+  <dependencies>
+    <dependency><groupId>org.springframework.ai</groupId><artifactId>spring-ai-ollama</artifactId><version>${spring-ai.version}</version><scope>test</scope></dependency>
+    <dependency><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk-server</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+    <dependency><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk-spring-ai</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+    <dependency><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk-langchain4j</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+    <dependency><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk-agentscope</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+    <dependency><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-collaboration</artifactId><version>${project.version}</version><scope>test</scope></dependency>
+  </dependencies>
+</project>

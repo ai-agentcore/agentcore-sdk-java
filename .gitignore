@@ -1,0 +1,7 @@
+target/
+.idea/
+*.iml
+.agentcore/
+agent.yaml
+teams.yaml
+.env
