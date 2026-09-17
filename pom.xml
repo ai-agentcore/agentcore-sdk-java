@@ -7,7 +7,14 @@
   <packaging>pom</packaging>
   <name>AgentCore SDK for Java</name>
   <description>Java SDK for AgentCore resources and Agent frameworks</description>
+  <url>https://github.com/ai-agentcore/agentcore-sdk-java</url>
   <licenses><license><name>Apache License, Version 2.0</name><url>https://www.apache.org/licenses/LICENSE-2.0</url></license></licenses>
+  <developers><developer><name>AgentCore SDK Team</name><url>https://github.com/ai-agentcore</url></developer></developers>
+  <scm>
+    <connection>scm:git:https://github.com/ai-agentcore/agentcore-sdk-java.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/ai-agentcore/agentcore-sdk-java.git</developerConnection>
+    <url>https://github.com/ai-agentcore/agentcore-sdk-java</url>
+  </scm>
   <modules>
     <module>core</module>
     <module>server</module>
@@ -43,4 +50,44 @@
     <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.4</version></plugin>
     <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId><version>3.4.2</version></plugin>
   </plugins></pluginManagement></build>
+  <profiles>
+    <profile>
+      <id>publish</id>
+      <build><plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-source-plugin</artifactId>
+          <version>3.3.1</version>
+          <executions><execution><id>attach-sources</id><goals><goal>jar-no-fork</goal></goals></execution></executions>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-javadoc-plugin</artifactId>
+          <version>3.11.2</version>
+          <executions><execution><id>attach-javadoc</id><goals><goal>jar</goal></goals></execution></executions>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-gpg-plugin</artifactId>
+          <version>3.2.8</version>
+          <configuration><bestPractices>true</bestPractices></configuration>
+          <executions><execution><id>sign-artifacts</id><phase>verify</phase><goals><goal>sign</goal></goals></execution></executions>
+        </plugin>
+        <plugin>
+          <groupId>org.sonatype.central</groupId>
+          <artifactId>central-publishing-maven-plugin</artifactId>
+          <version>0.11.0</version>
+          <extensions>true</extensions>
+          <configuration>
+            <publishingServerId>central</publishingServerId>
+            <autoPublish>false</autoPublish>
+            <excludeArtifacts>
+              <excludeArtifact>agentcore-sdk-examples</excludeArtifact>
+              <excludeArtifact>agentcore-sdk-integration-tests</excludeArtifact>
+            </excludeArtifacts>
+          </configuration>
+        </plugin>
+      </plugins></build>
+    </profile>
+  </profiles>
 </project>
