@@ -5,3 +5,9 @@ target/
 agent.yaml
 teams.yaml
 .env
+.env.*
+*.log
+*.pem
+*.key
+.local/
+.DS_Store
