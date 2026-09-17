@@ -2,7 +2,9 @@
 
 `agentcore-collaboration` 是独立 Maven 模块，只依赖基础 `agentcore-sdk`。使用者自行注册协作工具，不要求使用 `AgentCoreServer`，也不会自动启动 Matrix 轮询或替换业务 Agent 的身份。
 
-模块 POM 单独声明自身版本和所需基础 SDK 版本，发布协作新版本不要求同时发布基础包。当前均为 `0.1.0-SNAPSHOT`，尚未公开发行。
+协作能力按白名单开放，需先在 AgentCore 平台开通。安装模块不会自动开通平台协作能力。
+
+协作模块可以独立安装和升级，不要求同时升级基础 SDK。
 
 提供 24 个 Worker 工具，包括团队上下文、任务/子任务查询、确认/进度/心跳/阻塞/结果提交、任务文件上传下载、结果/事件历史和 Team 文件同步。应用主动启用协作后，工具注册和提示词组合不依赖当前团队状态；团队成员关系在实际调用工具时检查，没有团队时返回结构化失败结果，不会阻止普通 Agent 的构建。普通问候不应触发任务查询。
 
@@ -91,12 +93,6 @@ Task Service 明确返回 HTTP 错误时也转换为工具结果：401/403 为 `
 
 团队配置在工具调用时按需重读；文件删除代表停用，非法更新保留最后一份有效配置并记录警告。已注册工具可继续复用，每次执行使用该次调用传入的上下文。未传上下文时不会继承上次值，要求 Task Room 的写操作会拒绝执行。
 
-使用 bootstrap token 启动时，改为 `Collaboration.auto(core, workspace)`，复用 `AgentCore` 的 token 生命周期。此时团队配置从控制配置 OSS 读取并按 60 秒间隔按需刷新，任务服务地址来自 token 的 `matrixUrl`，Matrix 凭证通过 Controller 换取，不需要在环境变量中额外保存 Matrix Token。关闭顺序为先关闭协作实例，再关闭 `core`；协作实例不拥有或关闭 `core`。
-
-## 协作环境配置
-
-使用 `Collaboration.auto()` 或 `Collaboration.auto(workspace)` 时，协作工具调用会重新读取运行时 env 文件（默认 `/var/run/agentcore/agent/env`，可由 `AGENTCORE_ENV_PATH` 指定）。任务服务地址和具名 Matrix Token 优先使用文件中的值，缺少的字段从进程环境变量补充。文件不存在时允许仅使用环境变量；必需字段仍缺失、文件无法读取或格式错误时，调用报错，不静默回退。文件中的凭证更新会在后续调用中生效，不会被旧的进程环境变量覆盖。上述规则不改变 bootstrap 模式的凭证来源。
-
 ## 文件操作
 
 - Task/Subtask 文件：先用 list/read 工具取得输入；二进制文件可通过 download 工具保存到工作目录。上传使用 inline UTF-8/Base64 内容或 `local_path`，结果提交引用上传接口返回的 `fileRef`。
@@ -106,4 +102,4 @@ Task Service 明确返回 HTTP 错误时也转换为工具结果：401/403 为 `
 
 此模块不负责接收 Matrix 消息、唤醒应用、维持 Agent 对话历史或替代服务端权限校验。可以使用自己的 HTTP 服务、消息消费入口或 AgentCoreServer；在每次请求中传入框架原生上下文即可。手动调用工具时使用 `tool.call(arguments, metadata)`。使用方负责等在途请求结束后再关闭资源。
 
-本地测试已覆盖任务 HTTP 调用、multipart 上传、签名下载、分页目录同步、越界/符号链接拒绝、无团队行为及配置更新；三个框架的普通与流式工具循环通过本地 HTTP/SSE 模型服务验证上下文传递、并发隔离和无上下文请求不继承前次值。尚未完成云端协作 E2E；也不提供 Manager 的任务创建、分配和审批工具。
+此模块提供 Worker 能力，不包含 Manager 的任务创建、分配和审批工具。
