@@ -121,9 +121,34 @@ class BootstrapRuntimeTest {
     @Test void rejectedSaExchangesWithCurrentJwtAndRetriesControllerOnce() {
         rejectFirstSa = true;
         try (var runtime = new BootstrapRuntime(BootstrapToken.parse(token()), new HttpTransport())) {
-            assertEquals("test-ak", runtime.controller().get("highcode_sdk").block(Duration.ofSeconds(5)).accessKeyId());
+            // Keep the initial result callback open until the rejected SA has been refreshed.
+            runtime.get().doOnNext(token -> assertEquals("test-ak",
+                runtime.controller().get("highcode_sdk").block(Duration.ofSeconds(5)).accessKeyId()))
+                .block(Duration.ofSeconds(10));
             assertEquals(1, rejected.get()); assertEquals(2, tokens.get());
             assertEquals(List.of("Bearer sa-1", "Bearer sa-2"), saHeaders);
+        }
+    }
+    @Test void immediateConcurrentRefreshSharesOneNewExchange() {
+        try (var runtime = new BootstrapRuntime(BootstrapToken.parse(token()), new HttpTransport())) {
+            var values = runtime.get().flatMapMany(token -> Flux.range(0, 12)
+                .flatMap(i -> runtime.refresh(token))).collectList().block(Duration.ofSeconds(5));
+            assertEquals(java.util.Collections.nCopies(12, "sa-2"), values);
+            assertEquals(2, tokens.get());
+            assertEquals(List.of("jwt-initial", "jwt-1"), jwtRequests);
+        }
+    }
+    @Test void failedExchangeCanBeRetriedFromErrorCallback() {
+        tokenStatus = 401;
+        try (var runtime = new BootstrapRuntime(BootstrapToken.parse(token()), new HttpTransport())) {
+            String value = runtime.get().onErrorResume(AgentCoreException.class, error -> {
+                assertEquals(401, error.status());
+                tokenStatus = 0;
+                return runtime.get();
+            }).block(Duration.ofSeconds(5));
+            assertEquals("sa-2", value);
+            assertEquals(2, tokens.get());
+            assertEquals(List.of("jwt-initial", "jwt-initial"), jwtRequests);
         }
     }
     @Test void invalidTokenDoesNotFallBackToLocalConfigAndAuthIsNotRetried() {

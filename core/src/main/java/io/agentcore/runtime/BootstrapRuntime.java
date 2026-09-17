@@ -87,7 +87,8 @@ public final class BootstrapRuntime implements AgentSATokenSource, AutoCloseable
                 LOG.info("agentcore.bootstrap.exchange.succeeded saExpiration={} jwtExpiration={}", saExpires, jwtExpires);
                 return nextSa;
             }).doOnError(error -> LOG.warn("agentcore.bootstrap.exchange.failed error_type={}", error.getClass().getSimpleName()))
-            .takeUntilOther(stopped.asMono()).doFinally(signal -> { synchronized (this) { pending = null; } }).cache();
+            // Release the flight before subscribers can request a refresh or retry.
+            .takeUntilOther(stopped.asMono()).doOnTerminate(() -> { synchronized (this) { pending = null; } }).cache();
         return pending;
     }
     private synchronized void schedule(long delayMillis) {
