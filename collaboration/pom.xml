@@ -2,6 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <parent><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk-parent</artifactId><version>0.1.0</version></parent>
   <artifactId>agentcore-collaboration</artifactId>
+  <name>AgentCore Collaboration</name>
   <version>0.1.0</version>
   <dependencies>
     <dependency><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk</artifactId><version>0.1.0</version></dependency>

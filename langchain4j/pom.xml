@@ -2,6 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <parent><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk-parent</artifactId><version>0.1.0</version></parent>
   <artifactId>agentcore-sdk-langchain4j</artifactId>
+  <name>AgentCore SDK LangChain4j Adapter</name>
   <dependencies>
     <dependency><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk</artifactId></dependency>
     <dependency><groupId>dev.langchain4j</groupId><artifactId>langchain4j</artifactId><version>${langchain4j.version}</version></dependency>

@@ -2,6 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <parent><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk-parent</artifactId><version>0.1.0</version></parent>
   <artifactId>agentcore-sdk-agentscope</artifactId>
+  <name>AgentCore SDK AgentScope Adapter</name>
   <dependencies>
     <dependency><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk</artifactId></dependency>
     <dependency><groupId>io.agentscope</groupId><artifactId>agentscope-core</artifactId><version>${agentscope.version}</version></dependency>

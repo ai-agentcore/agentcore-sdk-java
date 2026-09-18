@@ -2,6 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <parent><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk-parent</artifactId><version>0.1.0</version></parent>
   <artifactId>agentcore-sdk-spring-ai</artifactId>
+  <name>AgentCore SDK Spring AI Adapter</name>
   <dependencies>
     <dependency><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk</artifactId></dependency>
     <dependency><groupId>org.springframework.ai</groupId><artifactId>spring-ai-client-chat</artifactId><version>${spring-ai.version}</version></dependency>
