@@ -27,19 +27,13 @@
 
 ## 安装
 
-需要 JDK 17+、Maven 3.9+。在仓库根目录构建并安装到本地 Maven 仓库：
-
-```bash
-mvn install
-```
-
-在应用中添加所需模块，例如基础 SDK：
+需要 JDK 17+、Maven 3.9+。SDK 发布在 Maven Central，无需自行构建或添加额外仓库。在应用中添加所需模块，例如基础 SDK：
 
 ```xml
 <dependency>
   <groupId>io.github.ai-agentcore</groupId>
   <artifactId>agentcore-sdk</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.1.0</version>
 </dependency>
 ```
 

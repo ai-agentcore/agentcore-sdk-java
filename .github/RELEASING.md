@@ -20,8 +20,9 @@ supported keyserver. Never commit credentials or private keys.
 
 ## Snapshots
 
-Enable SNAPSHOTs for the namespace in Central Portal. Keep the POM versions at
-`0.1.0-SNAPSHOT`, then run **Publish packages** manually from `main` in GitHub Actions.
+Enable SNAPSHOTs for the namespace in Central Portal. Set the POM and intra-project
+dependency versions to the next development version, for example `0.1.1-SNAPSHOT`,
+then run **Publish packages** manually from `main` in GitHub Actions.
 No Git tag is needed. Snapshots are publicly downloadable, mutable, and subject to
 the repository's retention policy; they do not undergo release validation.
 
@@ -38,7 +39,7 @@ Consumers must add this repository to their Maven POM:
 </repositories>
 ```
 
-Use the normal artifact coordinates with version `0.1.0-SNAPSHOT`.
+Use the normal artifact coordinates with the published SNAPSHOT version.
 
 ## Releases
 

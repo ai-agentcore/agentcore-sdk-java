@@ -1,10 +1,9 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
-  <parent><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk-parent</artifactId><version>0.1.0-SNAPSHOT</version></parent>
+  <parent><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk-parent</artifactId><version>0.1.0</version></parent>
   <artifactId>agentcore-sdk-server</artifactId>
   <dependencies>
     <dependency><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk</artifactId></dependency>
     <dependency><groupId>io.projectreactor.netty</groupId><artifactId>reactor-netty-http</artifactId><version>1.3.7</version></dependency>
   </dependencies>
 </project>
-
