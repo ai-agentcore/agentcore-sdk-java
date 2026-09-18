@@ -174,19 +174,19 @@ public class MemoryExample {
 
 示例会写入真实数据，建议使用测试记忆空间。新写入的记忆可能需要一定时间才能检索到，首次查询可能为空。
 
-需要 Agent 自动检索和使用记忆时，参见 [Memory 框架示例](examples/src/main/java/example/MemoryAdapters.java)。自动回写默认关闭，显式开启后只保存本轮用户输入和最终文本答案，不重复写入历史消息或工具结果。每个请求应使用对应用户的 `MemoryContext`，不要混用不同用户的记忆范围。
+需要 Agent 自动检索和使用记忆时，参见 [Memory 框架接入步骤](examples/README.md#为框架添加-memory)和[完整示例](examples/src/main/java/example/MemoryAdapters.java)。自动回写默认关闭，显式开启后只保存本轮用户输入和最终文本答案，不重复写入历史消息或工具结果。每个请求应使用对应用户的 `MemoryContext`，不要混用不同用户的记忆范围。
 
 ## 框架集成
 
 将模型、MCP、Skill 和 Memory 接入现有框架，不必重写 Agent 的业务逻辑。
 
-| 框架 | 适配模块 | 示例 |
+| 框架 | 使用指南 | 示例 |
 | --- | --- | --- |
-| Spring AI | `agentcore-sdk-spring-ai` | [Agent 与工具循环](examples/src/main/java/example/SpringAIAgent.java) |
-| LangChain4j | `agentcore-sdk-langchain4j` | [Agent 与 HTTP 服务](examples/src/main/java/example/LangChainAgent.java) |
-| AgentScope Java | `agentcore-sdk-agentscope` | [Agent 与执行事件](examples/src/main/java/example/AgentScopeAgent.java) |
+| Spring AI | [依赖、模型与工具接入](docs/spring-ai.md) | [Agent 与工具循环](examples/src/main/java/example/SpringAIAgent.java) |
+| LangChain4j | [依赖、模型与工具接入](docs/langchain4j.md) | [Agent 与 HTTP 服务](examples/src/main/java/example/LangChainAgent.java) |
+| AgentScope Java | [依赖、模型与工具接入](docs/agentscope.md) | [Agent 与执行事件](examples/src/main/java/example/AgentScopeAgent.java) |
 
-三个框架均提供 Memory 适配，见 [MemoryAdapters.java](examples/src/main/java/example/MemoryAdapters.java)。
+三个框架均提供 Memory 适配。首次使用建议先运行一个框架的服务示例，再添加 Memory；[示例指南](examples/README.md#准备资源与运行示例)提供构建、启动和调用命令。
 
 使用自有模型时，可以直接使用所选框架的原生 Provider，再接入 AgentCore 工具和 Memory。见[原生模型示例](examples/src/main/java/example/NativeFrameworkAgents.java)。不使用 Agent 编排框架时，也可通过 Spring AI 模块调用其他供应商模型，见 [ProviderModels.java](examples/src/main/java/example/ProviderModels.java)。
 
