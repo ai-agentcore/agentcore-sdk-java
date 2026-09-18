@@ -2,9 +2,17 @@ name: Publish packages
 
 on:
   workflow_dispatch:
+    inputs:
+      package:
+        description: Package to publish as a Snapshot
+        required: true
+        default: sdk
+        type: choice
+        options: [sdk, collaboration]
   push:
     tags:
-      - 'v*.*.*'
+      - 'sdk-v*.*.*'
+      - 'collaboration-v*.*.*'
 
 permissions:
   contents: read
@@ -30,22 +38,47 @@ jobs:
           server-password: MAVEN_CENTRAL_PASSWORD
           gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
-      - name: Check version
+      - name: Select package and check version
+        id: package
         env:
           EVENT_NAME: ${{ github.event_name }}
           TAG_NAME: ${{ github.ref_name }}
+          INPUT_PACKAGE: ${{ inputs.package }}
         run: |
-          version=$(mvn -B -q help:evaluate -Dexpression=project.version -DforceStdout)
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            package="$INPUT_PACKAGE"
+          else
+            package="${TAG_NAME%%-v*}"
+          fi
+          case "$package" in
+            sdk)
+              pom=pom.xml
+              projects='!collaboration,!integration-tests,!examples'
+              ;;
+            collaboration)
+              pom=collaboration/pom.xml
+              projects=:agentcore-collaboration
+              ;;
+            *) echo "Unsupported package: $package"; exit 1 ;;
+          esac
+          version=$(mvn -B -q -f "$pom" help:evaluate -Dexpression=project.version -DforceStdout)
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             [[ "$version" == *-SNAPSHOT ]] || { echo 'Manual publishing requires a SNAPSHOT version'; exit 1; }
           else
-            [[ "$version" != *-SNAPSHOT && "$TAG_NAME" == "v$version" ]] || { echo 'Tag must match the release version in pom.xml'; exit 1; }
+            [[ "$version" != *-SNAPSHOT && "$TAG_NAME" == "$package-v$version" ]] || { echo 'Tag must match the selected package version'; exit 1; }
           fi
-      - name: Verify all modules
-        run: mvn -B -ntp clean verify
-      - name: Publish SDK modules
+          echo "pom=$pom" >> "$GITHUB_OUTPUT"
+          echo "projects=$projects" >> "$GITHUB_OUTPUT"
+      - name: Verify selected package
         env:
+          PUBLISH_POM: ${{ steps.package.outputs.pom }}
+          PUBLISH_PROJECTS: ${{ steps.package.outputs.projects }}
+        run: mvn -B -ntp -f "$PUBLISH_POM" -pl "$PUBLISH_PROJECTS" clean verify
+      - name: Publish selected package
+        env:
+          PUBLISH_POM: ${{ steps.package.outputs.pom }}
+          PUBLISH_PROJECTS: ${{ steps.package.outputs.projects }}
           MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: mvn -B -ntp -Ppublish -DskipTests -pl '!integration-tests,!examples' deploy
+        run: mvn -B -ntp -f "$PUBLISH_POM" -pl "$PUBLISH_PROJECTS" -Ppublish -DskipTests deploy

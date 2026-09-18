@@ -28,6 +28,8 @@
   <properties>
     <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Collaboration has its own release version; used only by examples and integration tests. -->
+    <collaboration.version>0.1.0</collaboration.version>
     <reactor.version>3.8.7</reactor.version>
     <jackson.version>2.20.2</jackson.version>
     <spring-ai.version>2.0.1</spring-ai.version>

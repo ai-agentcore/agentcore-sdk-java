@@ -8,6 +8,6 @@
     <dependency><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk-spring-ai</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk-langchain4j</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk-agentscope</artifactId><version>${project.version}</version></dependency>
-    <dependency><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-collaboration</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-collaboration</artifactId><version>${collaboration.version}</version></dependency>
   </dependencies>
 </project>
