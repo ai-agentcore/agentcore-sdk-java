@@ -162,9 +162,14 @@ class BootstrapRuntimeTest {
     @Test void transientExchangeRecoversOnNextInvocation() {
         tokenStatus = 503;
         try (var runtime = new BootstrapRuntime(BootstrapToken.parse(token()), new HttpTransport())) {
-            assertThrows(AgentCoreException.class, () -> runtime.config().block(Duration.ofSeconds(5)));
-            assertEquals(3, tokens.get()); tokenStatus = 0;
-            assertEquals("ws-bootstrap", runtime.config().block(Duration.ofSeconds(5)).workspaceId());
+            var config = runtime.config().onErrorResume(AgentCoreException.class, error -> {
+                assertEquals(503, error.status());
+                assertEquals(3, tokens.get()); tokenStatus = 0;
+                // Retry before the first error callback returns, not after an arbitrary delay.
+                return runtime.config();
+            }).block(Duration.ofSeconds(5));
+            assertEquals("ws-bootstrap", config.workspaceId());
+            assertEquals(4, tokens.get()); assertEquals(1, downloads.get());
         }
     }
     private static void reply(HttpExchange e, Map<String, Object> body) throws java.io.IOException {

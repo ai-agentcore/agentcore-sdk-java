@@ -21,6 +21,36 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class CredentialLifecycleTest {
     @TempDir Path directory;
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {401, 503})
+    void failedStsCanBeRetriedFromErrorCallback(int initialStatus) throws Exception {
+        var status = new AtomicInteger(initialStatus); var calls = new AtomicInteger();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v1/credentials/sts", exchange -> {
+            calls.incrementAndGet();
+            if (status.get() != 0) {
+                exchange.sendResponseHeaders(status.get(), -1); exchange.close(); return;
+            }
+            byte[] body = Json.write(Map.of("access_key_id", "test-ak", "access_key_secret", "test-sk",
+                "security_token", "test-sts", "expiration", Instant.now().plusSeconds(3600).toString()))
+                .getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, body.length); exchange.getResponseBody().write(body); exchange.close();
+        }); server.start();
+        try {
+            var credentials = new ControllerCredentials("http://127.0.0.1:" + server.getAddress().getPort(),
+                () -> Mono.just("sa-fixture"), new HttpTransport());
+            var result = credentials.get("highcode_sdk").onErrorResume(AgentCoreException.class, error -> {
+                assertEquals(initialStatus, error.status());
+                assertEquals(initialStatus == 503 ? 3 : 1, calls.get());
+                status.set(0);
+                return Flux.range(0, 10).flatMap(i -> credentials.get("highcode_sdk"))
+                    .collectList().map(values -> { assertEquals(10, values.size()); return values.get(0); });
+            }).block(Duration.ofSeconds(5));
+            assertEquals("test-ak", result.accessKeyId());
+            assertEquals(initialStatus == 503 ? 4 : 2, calls.get(), "Recovery callers must share one fresh request");
+            assertSame(result, credentials.get("highcode_sdk").block(Duration.ofSeconds(1)));
+        } finally { server.stop(0); }
+    }
     @Test void stsSingleFlightAndWatRefreshDoNotRetainAnOldSaToken() throws Exception {
         Path token = directory.resolve("token"); Files.writeString(token, "sa-one");
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);

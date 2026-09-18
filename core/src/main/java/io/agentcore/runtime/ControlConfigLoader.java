@@ -43,7 +43,7 @@ final class ControlConfigLoader implements AutoCloseable {
                         if (!Instant.parse(Json.text(value.get("expiration"), "expiration")).isAfter(Instant.now()))
                             throw new IllegalArgumentException("Controller returned expired control OSS credentials");
                         synchronized (this) { credential = new java.util.LinkedHashMap<>(value); }
-                    }).doFinally(signal -> { synchronized (this) { pending = null; } }).cache();
+                    }).doOnTerminate(() -> { synchronized (this) { pending = null; } }).cache();
                 return pending;
             }
         });

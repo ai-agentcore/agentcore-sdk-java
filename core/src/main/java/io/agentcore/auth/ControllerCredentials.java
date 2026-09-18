@@ -47,7 +47,7 @@ public final class ControllerCredentials implements CredentialProvider {
             if (!expires.isAfter(Instant.now())) throw new IllegalArgumentException("Controller returned expired STS");
             synchronized (this) { cache.put(purpose, new Cached(credential, expires)); }
             return credential;
-        }).doFinally(signal -> { synchronized (this) { pending.remove(purpose); } }).cache();
+        }).doOnTerminate(() -> { synchronized (this) { pending.remove(purpose); } }).cache();
         pending.put(purpose, request);
         return request;
     }
