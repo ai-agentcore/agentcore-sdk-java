@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.github.ai-agentcore</groupId>
   <artifactId>agentcore-sdk-parent</artifactId>
-  <version>0.1.0</version>
+  <version>0.1.1</version>
   <packaging>pom</packaging>
   <name>AgentCore SDK for Java</name>
   <description>Java SDK for AgentCore resources and Agent frameworks</description>
@@ -30,6 +30,8 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <!-- Collaboration has its own release version; used only by examples and integration tests. -->
     <collaboration.version>0.1.0</collaboration.version>
+    <central.autoPublish>false</central.autoPublish>
+    <central.waitUntil>validated</central.waitUntil>
     <reactor.version>3.8.7</reactor.version>
     <jackson.version>2.20.2</jackson.version>
     <spring-ai.version>2.0.1</spring-ai.version>
@@ -82,7 +84,8 @@
           <extensions>true</extensions>
           <configuration>
             <publishingServerId>central</publishingServerId>
-            <autoPublish>false</autoPublish>
+            <autoPublish>${central.autoPublish}</autoPublish>
+            <waitUntil>${central.waitUntil}</waitUntil>
             <excludeArtifacts>
               <excludeArtifact>agentcore-sdk-examples</excludeArtifact>
               <excludeArtifact>agentcore-sdk-integration-tests</excludeArtifact>
