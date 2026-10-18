@@ -20,7 +20,12 @@ public final class MemoryStore {
         return addMemories(text, scope, null);
     }
     public Mono<Map<String, Object>> addMemories(String text, MemoryScope scope, Map<String, String> metadata) {
+        return addMemories(text, scope, metadata, false);
+    }
+    /** By default writes return data.taskId after acceptance. Use sync=true to wait for data.memories. */
+    public Mono<Map<String, Object>> addMemories(String text, MemoryScope scope, Map<String, String> metadata, boolean sync) {
         var body = new LinkedHashMap<String, Object>(); body.put("text", Json.text(text, "text"));
+        body.put("sync", sync);
         if (metadata != null) body.put("metadata", Map.copyOf(metadata));
         return request("AddMemories", "POST", "/memories", Map.of(), withScope(body, scope));
     }
@@ -28,10 +33,18 @@ public final class MemoryStore {
         return addMessages(messages, scope, null);
     }
     public Mono<Map<String, Object>> addMessages(List<Map<String, String>> messages, MemoryScope scope, Map<String, String> metadata) {
+        return addMessages(messages, scope, metadata, false);
+    }
+    public Mono<Map<String, Object>> addMessages(List<Map<String, String>> messages, MemoryScope scope, Map<String, String> metadata, boolean sync) {
         if (messages.isEmpty()) return Mono.error(new IllegalArgumentException("messages must not be empty"));
         var body = new LinkedHashMap<String, Object>(); body.put("messages", messages);
+        body.put("sync", sync);
         if (metadata != null) body.put("metadata", Map.copyOf(metadata));
         return request("AddMemories", "POST", "/memories", Map.of(), withScope(body, scope));
+    }
+    /** Query once; the SDK does not poll tasks or resubmit writes. */
+    public Mono<Map<String, Object>> getMemoryTask(String taskId) {
+        return request("GetMemoryTask", "GET", "/memory-tasks/" + ControlPlane.encode(Json.text(taskId, "taskId")), Map.of(), null);
     }
     public record SearchOptions(Integer topK, Map<String, String> metadata, Boolean enableRerank,
                                 Double minSimilarity, Double minScore) {
@@ -103,6 +116,13 @@ public final class MemoryStore {
                 if (!Boolean.TRUE.equals(response.get("success"))) throw new AgentCoreException(action,
                     response.get("httpStatusCode") instanceof Number n ? n.intValue() : null,
                     (String) response.get("requestId"), (String) response.get("code"), (String) response.get("message"), null);
+                if (add && Boolean.FALSE.equals(body.get("sync"))) {
+                    Object taskId = response.get("data") instanceof Map<?, ?> data ? data.get("taskId") : null;
+                    if (!(taskId instanceof String id) || id.isBlank()) throw new AddMemoriesOutcomeUnknownException(
+                        new AgentCoreException(action, 200, (String) response.get("requestId"), "InvalidResponse", "data.taskId must be a non-empty string", null));
+                    org.slf4j.LoggerFactory.getLogger(MemoryStore.class).info(
+                        "agentcore.memory.request.submitted memory_store_name={} task_id={} request_id={}", name, taskId, response.get("requestId"));
+                }
                 return response;
             }).doOnError(AgentCoreException.class, error -> org.slf4j.LoggerFactory.getLogger(MemoryStore.class).warn(
                 "agentcore.memory.request.failed operation={} memory_store_name={} status={} service_code={} request_id={} message={} error_type={}",

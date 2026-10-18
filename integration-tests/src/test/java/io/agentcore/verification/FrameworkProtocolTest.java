@@ -66,7 +66,7 @@ class FrameworkProtocolTest {
             memoryRequests.add(Json.read(java.net.URLDecoder.decode(form.substring(5), StandardCharsets.UTF_8)));
             String response = exchange.getRequestURI().getPath().endsWith("/search")
                 ? "{\"success\":true,\"data\":{\"memories\":[{\"memory\":{\"content\":{\"text\":\"The user prefers green.\"}}}]}}"
-                : "{\"success\":true,\"data\":{\"memories\":[{\"memoryId\":\"memory-1\"}]}}";
+                : "{\"success\":true,\"data\":{\"taskId\":\"task-1\"}}";
             byte[] bytes = response.getBytes(StandardCharsets.UTF_8); exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, bytes.length); exchange.getResponseBody().write(bytes); exchange.close();
         });
@@ -221,6 +221,7 @@ class FrameworkProtocolTest {
         assertEquals(2, memoryRequests.size(), () -> "Expected one recall and one write: " + memoryRequests);
         assertFalse(Json.object(memoryRequests.get(0).get("scope")).containsKey("sessionId"));
         assertEquals("session-one", Json.object(memoryRequests.get(1).get("scope")).get("sessionId"));
+        assertEquals(false, memoryRequests.get(1).get("sync"));
         assertEquals(List.of(Map.of("role", "user", "content", input), Map.of("role", "assistant", "content", "Final answer.")),
             memoryRequests.get(1).get("messages"));
     }

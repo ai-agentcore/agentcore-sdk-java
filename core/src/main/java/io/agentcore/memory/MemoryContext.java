@@ -20,7 +20,7 @@ public record MemoryContext(MemoryStore store, MemoryScope readScope, MemoryScop
     public Mono<Void> writeBack(String userMessage, String assistantAnswer) {
         requireWriteScope();
         return store.addMessages(List.of(Map.of("role", "user", "content", userMessage),
-            Map.of("role", "assistant", "content", assistantAnswer)), writeScope).then();
+            Map.of("role", "assistant", "content", assistantAnswer)), writeScope, null, false).then();
     }
     public void requireWriteScope() {
         if (writeScope == null) throw new IllegalArgumentException("Automatic write-back requires an explicit write scope");
