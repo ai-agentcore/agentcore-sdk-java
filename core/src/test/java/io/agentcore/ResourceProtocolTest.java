@@ -66,7 +66,7 @@ class ResourceProtocolTest {
             assertTrue(body.startsWith("body="));
             String decoded = java.net.URLDecoder.decode(body.substring(5), StandardCharsets.UTF_8);
             assertEquals("u1", Json.object(Json.read(decoded).get("scope")).get("userId"));
-            byte[] response = "{\"success\":true,\"data\":{\"memories\":[{\"memoryId\":\"m1\"}]}}".getBytes(StandardCharsets.UTF_8);
+            byte[] response = "{\"success\":true,\"data\":{\"taskId\":\"task-1\"}}".getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, response.length); exchange.getResponseBody().write(response); exchange.close();
         });

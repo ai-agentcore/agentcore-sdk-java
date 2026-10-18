@@ -152,6 +152,7 @@ Memory 用于保存和检索长期记忆，也支持查询、更新、删除记�
 
 ```java
 import io.agentcore.AgentCore;
+import io.agentcore.Json;
 import io.agentcore.memory.MemoryScope;
 
 public class MemoryExample {
@@ -159,7 +160,10 @@ public class MemoryExample {
         try (var core = AgentCore.auto()) {
             var store = core.memory("my-memory-store");
             var writeScope = new MemoryScope("example-user", "my-agent", "session-1");
-            store.addMemories("用户喜欢简短的中文回答。", writeScope).block();
+            var submission = store.addMemories("用户喜欢简短的中文回答。", writeScope).block();
+            var taskId = (String) Json.object(submission.get("data")).get("taskId");
+            System.out.println("Memory task: " + taskId);
+            System.out.println(store.getMemoryTask(taskId).block());
 
             // 跨会话检索该用户的记忆；新写入的记忆可能需要一定时间才能检索到。
             var readScope = new MemoryScope("example-user", "my-agent", null);
@@ -174,7 +178,13 @@ public class MemoryExample {
 
 示例会写入真实数据，建议使用测试记忆空间。新写入的记忆可能需要一定时间才能检索到，首次查询可能为空。
 
+`addMemories()` 和 `addMessages()` 在 `data.taskId` 返回任务 ID，通过 `getMemoryTask(taskId)` 查询处理进度。任务成功后可从 `data.memories` 读取记忆 ID；失败时可从 `data.error` 查看原因。
+
+如需等待提取完成，使用 `store.addMemories(text, scope, metadata, true)` 或 `store.addMessages(messages, scope, metadata, true)`，从返回值的 `data.memories` 读取结果。响应式应用可直接组合返回的 `Mono`。
+
 需要 Agent 自动检索和使用记忆时，参见 [Memory 框架接入步骤](examples/README.md#为框架添加-memory)和[完整示例](examples/src/main/java/example/MemoryAdapters.java)。自动回写默认关闭，显式开启后只保存本轮用户输入和最终文本答案，不重复写入历史消息或工具结果。每个请求应使用对应用户的 `MemoryContext`，不要混用不同用户的记忆范围。
+
+基础用法见 [Memory 示例](examples/src/main/java/example/MemoryExample.java)。
 
 ## 框架集成
 

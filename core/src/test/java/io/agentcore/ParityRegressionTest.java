@@ -70,7 +70,7 @@ class ParityRegressionTest {
             String raw = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             if (!raw.isEmpty()) bodies.add(Json.read(java.net.URLDecoder.decode(raw.substring(5), StandardCharsets.UTF_8)));
             if (exchange.getRequestURI().getRawQuery() != null) queries.add(java.net.URLDecoder.decode(exchange.getRequestURI().getRawQuery(), StandardCharsets.UTF_8));
-            byte[] body = "{\"success\":true,\"data\":{\"items\":[],\"nextToken\":\"page+2\"}}".getBytes(StandardCharsets.UTF_8);
+            byte[] body = "{\"success\":true,\"data\":{\"taskId\":\"task-1\",\"items\":[],\"nextToken\":\"page+2\"}}".getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, body.length); exchange.getResponseBody().write(body); exchange.close();
         }); server.start();
@@ -85,6 +85,7 @@ class ParityRegressionTest {
             var page = store.listMemorySessionMessages("session", scope, 10, null).block(Duration.ofSeconds(5));
             store.listMemorySessionMessages("session", scope, 10, (String) Json.object(page.get("data")).get("nextToken")).block(Duration.ofSeconds(5));
             assertEquals(metadata, bodies.get(0).get("metadata")); assertEquals(metadata, bodies.get(1).get("metadata"));
+            assertEquals(false, bodies.get(0).get("sync")); assertEquals(false, bodies.get(1).get("sync"));
             assertEquals(metadata, bodies.get(2).get("metadata")); assertEquals(true, bodies.get(2).get("enableRerank"));
             assertEquals(0.3, bodies.get(2).get("minSimilarity")); assertEquals(0.2, bodies.get(2).get("minScore")); assertEquals(8, bodies.get(2).get("topK"));
             assertTrue(queries.get(1).contains("nextToken=page+2")); assertTrue(queries.get(1).contains("maxResults=10"));
