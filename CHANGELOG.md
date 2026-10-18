@@ -1,6 +1,6 @@
 # Release notes
 
-## Unreleased
+## 0.1.1 — 2026-10-18
 
 - Memory 写入默认改为异步提取，`addMemories()` 和 `addMessages()` 返回值的 `data.taskId` 为任务 ID。原先依赖 `data.memories` 的调用需使用带 `sync` 参数的重载并传入 `true`。
 - 新增 `getMemoryTask(taskId)`，用于查询提取进度、记忆 ID 和任务错误。
