@@ -66,7 +66,7 @@ public final class HttpTransport {
     public Mono<byte[]> download(URI url) {
         if (!("http".equals(url.getScheme()) || "https".equals(url.getScheme())) || url.getUserInfo() != null)
             return Mono.error(new IllegalArgumentException("Invalid download URL"));
-        var request = HttpRequest.newBuilder(url).timeout(Duration.ofSeconds(30)).GET().build();
+        var request = requestBuilder(url).timeout(Duration.ofSeconds(30)).GET().build();
         return Mono.usingWhen(Mono.fromFuture(() -> client.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream())),
             response -> Mono.fromCallable(() -> {
                 check("download", url, response);
@@ -94,7 +94,7 @@ public final class HttpTransport {
                 + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + filename.replace("\\", "\\\\").replace("\"", "\\\"")
                 + "\"\r\nContent-Type: " + contentType + "\r\n\r\n"), content,
                 HttpRequest.BodyPublishers.ofString("\r\n--" + boundary + "--\r\n"));
-            var builder = HttpRequest.newBuilder(url).timeout(Duration.ofMinutes(5)).PUT(body);
+            var builder = requestBuilder(url).timeout(Duration.ofMinutes(5)).PUT(body);
             values.forEach(builder::setHeader);
             builder.setHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
             return Mono.fromFuture(() -> client.sendAsync(builder.build(), HttpResponse.BodyHandlers.ofString()));
@@ -103,7 +103,7 @@ public final class HttpTransport {
 
     /** The caller owns the destination, normally a temporary file committed only on success. */
     public Mono<Long> downloadTo(URI url, java.nio.file.Path destination) {
-        var request = HttpRequest.newBuilder(url).timeout(Duration.ofMinutes(5)).GET().build();
+        var request = requestBuilder(url).timeout(Duration.ofMinutes(5)).GET().build();
         return Mono.usingWhen(Mono.fromFuture(() -> client.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream())),
             response -> Mono.fromCallable(() -> {
                 check("download", url, response);
@@ -113,12 +113,19 @@ public final class HttpTransport {
     }
 
     private HttpRequest request(String method, URI url, Map<String, String> headers, Object body, Duration timeout) {
-        var builder = HttpRequest.newBuilder(url).timeout(timeout);
+        var builder = requestBuilder(url).timeout(timeout);
         if (body != null) builder.header("Content-Type", "application/json");
         headers.forEach(builder::setHeader);
         LOG.debug("agentcore.http.request method={} endpoint={}{}", method, url.getAuthority(), url.getPath());
         return builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody()
             : HttpRequest.BodyPublishers.ofString(Json.write(body))).build();
+    }
+
+    private static HttpRequest.Builder requestBuilder(URI url) {
+        var builder = HttpRequest.newBuilder(url);
+        // Cleartext AgentCore gateways reject the JDK client's default h2c upgrade.
+        if ("http".equalsIgnoreCase(url.getScheme())) builder.version(HttpClient.Version.HTTP_1_1);
+        return builder;
     }
 
     private void check(String operation, URI url, HttpResponse<?> response) {
