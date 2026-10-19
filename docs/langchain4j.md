@@ -8,7 +8,7 @@
 <dependency>
   <groupId>io.github.ai-agentcore</groupId>
   <artifactId>agentcore-sdk-langchain4j</artifactId>
-  <version>0.1.2</version>
+  <version>0.1.3</version>
 </dependency>
 ```
 
@@ -18,7 +18,7 @@
 <dependency>
   <groupId>io.github.ai-agentcore</groupId>
   <artifactId>agentcore-sdk-server</artifactId>
-  <version>0.1.2</version>
+  <version>0.1.3</version>
 </dependency>
 ```
 

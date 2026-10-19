@@ -1,5 +1,12 @@
 # Release notes
 
+## 0.1.3 — 2026-10-19
+
+- 新增响应式 Agent 模版读取入口 `core.templates().get()`，按指定版本或 `latest` 标签加载 Workspace 中的模版。
+- 通过 `template.instruction()` 获取主 Agent 的 Prompt，通过 `loadSkills()` 按需加载随包静态 Skill 和引用的云端 Skill；模型仍由应用独立选择。
+- Skill 加载支持并发复用和成功结果缓存，物化目录随 Core 关闭而清理，复用已有 Skill 和框架工具接口。
+- 补充 LangChain4j 使用示例和 HTTP 协议回归测试。
+
 ## 0.1.2 — 2026-10-19
 
 - 明文 HTTP 请求使用 HTTP/1.1，避免默认 h2c 升级被 AgentCore Task Service 网关拒绝并返回 HTTP 426，恢复原生协作中的任务查询、接单、文件上传和结果提交。HTTPS 保持原有协议协商。
