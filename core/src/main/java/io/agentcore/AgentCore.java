@@ -9,6 +9,7 @@ import io.agentcore.mcp.MCPClient;
 import io.agentcore.model.ModelClient;
 import io.agentcore.runtime.AgentConfig;
 import io.agentcore.runtime.RuntimeEnvironment;
+import io.agentcore.template.Templates;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -27,6 +28,7 @@ import reactor.util.retry.Retry;
 public final class AgentCore implements AutoCloseable {
     private final HttpTransport http = new HttpTransport();
     private final io.agentcore.skill.Skills skills;
+    private final Templates templates;
     private final List<MCPClient> mcps = new ArrayList<>();
     private final Mono<AgentConfig> config;
     private final Mono<ControllerCredentials> controller;
@@ -36,6 +38,7 @@ public final class AgentCore implements AutoCloseable {
 
     private AgentCore(Builder options) {
         skills = new io.agentcore.skill.Skills(this::controlPlane, http, options.skillWorkspaceDir);
+        templates = new Templates(this::controlPlane, http, skills, options.skillWorkspaceDir);
         Path configPath = options.configPath != null ? options.configPath
             : Path.of(System.getenv().getOrDefault("AGENTCORE_CONFIG_PATH", "/var/run/agentcore/agent/agent.yaml"));
         Path envPath = options.envPath != null ? options.envPath
@@ -152,6 +155,7 @@ public final class AgentCore implements AutoCloseable {
     }
     public MemoryStore memory(String name) { checkOpen(); return new MemoryStore(name, this::controlPlane); }
     public io.agentcore.skill.Skills skills() { checkOpen(); return skills; }
+    public Templates templates() { checkOpen(); return templates; }
     public io.agentcore.auth.BoundCredentials credentials() { checkOpen(); return new io.agentcore.auth.BoundCredentials(this::controlPlane, () -> controller); }
     public io.agentcore.runtime.BootstrapRuntime bootstrapRuntime() { checkOpen(); return bootstrap; }
     private synchronized MCPClient track(MCPClient client) { checkOpen(); mcps.add(client); return client; }
@@ -162,6 +166,8 @@ public final class AgentCore implements AutoCloseable {
             synchronized (this) { closed = true; clients = List.copyOf(mcps); mcps.clear(); }
             if (bootstrap != null) bootstrap.close();
             return Mono.whenDelayError(Flux.fromIterable(clients).flatMapDelayError(MCPClient::closeAsync, 8, 1), Mono.fromRunnable(() -> {
+                try { templates.close(); } catch (java.io.IOException error) { throw new java.io.UncheckedIOException(error); }
+            }).subscribeOn(Schedulers.boundedElastic()), Mono.fromRunnable(() -> {
                 try { skills.close(); } catch (java.io.IOException error) { throw new java.io.UncheckedIOException(error); }
             }).subscribeOn(Schedulers.boundedElastic()));
         });

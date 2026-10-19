@@ -5,6 +5,7 @@
 | 示例 | 内容 |
 | --- | --- |
 | [CloudResources](src/main/java/example/CloudResources.java) | 托管 Model、MCP、Skill、Memory |
+| [AgentTemplateExample](src/main/java/example/AgentTemplateExample.java) | 加载模版的 Prompt、Skill，接入独立配置的 LangChain4j 模型 |
 | [DirectResources](src/main/java/example/DirectResources.java) | 自有模型与 MCP |
 | [LangChainAgent](src/main/java/example/LangChainAgent.java) | LangChain4j Agent、MCP/Skill 工具、AG-UI/OpenAI 服务 |
 | [SpringAIAgent](src/main/java/example/SpringAIAgent.java) | Spring AI 工具循环与完整执行事件 |
@@ -28,6 +29,7 @@
 | `LangChainAgent` | 上述三项，以及 `my-skill` |
 | `MemoryAdapters` | `my-connection`、`my-model`、`my-memory-store`，以及示例用户、Agent 和会话标识 |
 | `CloudResources` | 模型连接、模型、MCP、Skill 名称及版本、MemoryStore 名称 |
+| `AgentTemplateExample` | `my-agent-template` 及其版本、`my-connection`、`my-model` |
 | `DirectResources` | 自有模型名称、模型地址、MCP 地址；通过环境变量提供 `MODEL_API_KEY` |
 | `ServerExtensions` | 无需云端资源，返回固定文本，用于验证 HTTP 服务启动与协议调用 |
 
