@@ -3,8 +3,7 @@ package io.agentcore.skill;
 import io.agentcore.HttpTransport;
 import io.agentcore.Json;
 import io.agentcore.controlplane.ControlPlane;
-import io.agentcore.controlplane.EndpointFallback;
-import io.agentcore.AgentCoreException;
+import io.agentcore.controlplane.ArchiveDownload;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
@@ -70,14 +69,7 @@ public final class Skills implements AutoCloseable {
         });
     }
     private Mono<byte[]> download(URI url) {
-        return http.download(url).onErrorResume(error -> {
-            URI fallback = EndpointFallback.oss(url);
-            boolean unavailable = EndpointFallback.connectionFailure(error)
-                || error instanceof AgentCoreException failure && failure.status() != null && failure.status() >= 500;
-            if (fallback == null || !unavailable) return Mono.error(error);
-            org.slf4j.LoggerFactory.getLogger(Skills.class).warn("agentcore.skill.download.fallback host={}", fallback.getHost());
-            return http.download(fallback);
-        });
+        return ArchiveDownload.get(http, url, 10 * 1024 * 1024);
     }
     private synchronized Skill materialize(String name, String version, byte[] archive) throws IOException {
         if (closed) throw new IllegalStateException("Skills client is closed");
@@ -98,7 +90,10 @@ public final class Skills implements AutoCloseable {
         } catch (Exception error) { deleteTree(target); throw error; }
     }
     public static void extract(byte[] bytes, Path target) throws IOException {
-        if (bytes.length < 2 || bytes.length > 10 * 1024 * 1024) throw new IOException("Invalid Skill archive size");
+        extract(bytes, target, 10 * 1024 * 1024);
+    }
+    public static void extract(byte[] bytes, Path target, int maxBytes) throws IOException {
+        if (bytes.length < 2 || bytes.length > maxBytes) throw new IOException("Invalid resource archive size");
         var input = new ByteArrayInputStream(bytes);
         try (ArchiveInputStream<?> archive = bytes[0] == 'P' && bytes[1] == 'K' ? new ZipArchiveInputStream(input)
                 : new TarArchiveInputStream(bytes[0] == 31 && bytes[1] == (byte) 139 ? new GZIPInputStream(input) : input)) {

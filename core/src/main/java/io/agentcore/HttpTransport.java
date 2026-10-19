@@ -64,14 +64,17 @@ public final class HttpTransport {
     }
 
     public Mono<byte[]> download(URI url) {
+        return download(url, 10 * 1024 * 1024);
+    }
+    public Mono<byte[]> download(URI url, int maxBytes) {
         if (!("http".equals(url.getScheme()) || "https".equals(url.getScheme())) || url.getUserInfo() != null)
             return Mono.error(new IllegalArgumentException("Invalid download URL"));
         var request = requestBuilder(url).timeout(Duration.ofSeconds(30)).GET().build();
         return Mono.usingWhen(Mono.fromFuture(() -> client.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream())),
             response -> Mono.fromCallable(() -> {
                 check("download", url, response);
-                byte[] value = response.body().readNBytes(10 * 1024 * 1024 + 1);
-                if (value.length > 10 * 1024 * 1024) throw new IllegalArgumentException("Download exceeds 10 MiB");
+                byte[] value = response.body().readNBytes(maxBytes + 1);
+                if (value.length > maxBytes) throw new IllegalArgumentException("Download exceeds " + maxBytes / (1024 * 1024) + " MiB");
                 return value;
             }).subscribeOn(Schedulers.boundedElastic()).timeout(Duration.ofSeconds(30)),
             response -> Mono.fromRunnable(() -> { try { response.body().close(); } catch (java.io.IOException ignored) { } }));

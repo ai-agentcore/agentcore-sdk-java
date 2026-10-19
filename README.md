@@ -146,6 +146,22 @@ public class DirectResources {
 
 本地 Skill 使用 `core.skills().local(path)` 加载。完整配置见[自定义资源示例](examples/src/main/java/example/DirectResources.java)和 [Skill 使用说明](examples/README.md#使用-skill)。
 
+## 使用 Agent 模版
+
+在当前 Workspace 中准备一个已发布的 Agent 模版，并授予应用相应的模版和 Skill 读取权限。在 Core 的生命周期内加载并使用模版：
+
+```java
+try (var core = AgentCore.auto()) {
+    var template = core.templates().get("my-agent-template", "1.0.0").block();
+    String instruction = template.instruction();
+    var skills = template.loadSkills().block();
+}
+```
+
+`instruction()` 返回模版主 Agent 的 Prompt 字符串。`loadSkills()` 按需加载随包 Skill 和引用的云端 Skill，返回现有 `Skill` 对象，可通过 `Skill.tools(...)` 接入各框架。模型由应用独立配置。
+
+`get(name)` 使用模版的 `latest` 标签；同一个模版对象成功加载 Skill 后会复用结果，不自动跟随引用标签变化。异步应用可以直接组合返回的 `Mono`。完整用法见 [AgentTemplateExample](examples/src/main/java/example/AgentTemplateExample.java)。
+
 ## 使用 Memory
 
 Memory 用于保存和检索长期记忆，也支持查询、更新、删除记忆以及查看会话消息。使用前，在 AgentCore 中创建 MemoryStore 并授予应用访问权限。
