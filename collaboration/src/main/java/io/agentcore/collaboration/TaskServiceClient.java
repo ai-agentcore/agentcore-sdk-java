@@ -21,6 +21,9 @@ public final class TaskServiceClient {
     public TaskServiceClient(Supplier<Mono<Map<String, String>>> environment, Supplier<Mono<String>> matrixTokens) {
         this.environment = environment; this.matrixTokens = matrixTokens;
     }
+    MatrixFileClient roomFiles(CollaborationFiles files) {
+        return new MatrixFileClient(environment, snapshot -> headers(snapshot, null), files);
+    }
     public Mono<Map<String, Object>> request(TeamsProvider.Snapshot teams, String method, String path, Map<String, String> query, Map<String, Object> body, String key) {
         return endpoint(path, query).flatMap(uri -> http.json("Task Service", method, uri,
             () -> headers(teams, key), body, Duration.ofSeconds(30)));

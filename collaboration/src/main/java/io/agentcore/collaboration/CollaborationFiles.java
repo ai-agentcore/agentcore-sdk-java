@@ -95,7 +95,7 @@ final class CollaborationFiles {
                 return entry;
             }).collectList();
     }
-    private Mono<Map<String, Object>> store(String output, boolean overwrite, java.util.function.Function<Path, Mono<Long>> download) {
+    Mono<Map<String, Object>> store(String output, boolean overwrite, java.util.function.Function<Path, Mono<Long>> download) {
         return Mono.defer(() -> {
             final Path target;
             try { target = local(output); } catch (Exception error) { return Mono.error(error); }
@@ -114,7 +114,7 @@ final class CollaborationFiles {
             }).subscribeOn(Schedulers.boundedElastic()));
         });
     }
-    private Path local(String input) throws java.io.IOException {
+    Path local(String input) throws java.io.IOException {
         Path root = workspace.toRealPath();
         Path path = Path.of(input); path = (path.isAbsolute() ? path : root.resolve(path)).toAbsolutePath().normalize();
         if (!path.startsWith(root)) throw new IllegalArgumentException("Local path must stay in the collaboration workspace");

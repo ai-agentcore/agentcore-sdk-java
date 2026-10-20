@@ -6,11 +6,11 @@
 
 协作模块可以独立安装和升级，不要求同时升级基础 SDK。
 
-提供 24 个 Worker 工具，包括团队上下文、任务/子任务查询、确认/进度/心跳/阻塞/结果提交、任务文件上传下载、结果/事件历史和 Team 文件同步。应用主动启用协作后，工具注册和提示词组合不依赖当前团队状态；团队成员关系在实际调用工具时检查，没有团队时返回结构化失败结果，不会阻止普通 Agent 的构建。普通问候不应触发任务查询。
+提供 26 个工具，包括团队上下文、任务/子任务查询、确认/进度/心跳/阻塞/结果提交、任务文件上传下载、结果/事件历史、Team 文件同步和 Matrix 房间附件收发。工具注册和提示词组合不依赖当前团队状态；Task/Team 工具在调用时检查成员关系，房间附件只要求当前房间上下文和 Matrix 身份。普通问候不应触发任务查询。
 
 使用 `composePrompt(userPrompt)` 保留业务提示词并追加协作规则和工作目录说明，与 Python 的 `compose_prompt()` 行为一致。不需要业务代码手工拼接 `WORKER_PROMPT` 或判断是否有团队。
 
-内置 `task-execution` 和 `file-sharing` 两个 Skill，按需通过 `skills()` 加载，不会自动注入用户 Agent。它们随协作包打包，运行时解压至该实例独占的临时目录，关闭实例时清理。
+内置 `task-execution`、`file-sharing` 和 `room-files` 三个 Skill，按需通过 `skills()` 加载，不会自动注入用户 Agent。它们随协作包打包，运行时解压至该实例独占的临时目录，关闭实例时清理。
 
 ```java
 import io.agentcore.collaboration.Collaboration;
@@ -99,6 +99,25 @@ Task Service 明确返回 HTTP 错误时也转换为工具结果：401/403 为 `
 - Team 文件：`agentteams_filesync_push/pull/list/stat` 操作当前 Team 的 `shared/` 空间，支持单文件和目录。Team 由可信请求上下文选取，不作为模型可随意设置的参数。
 - 本地路径相对于 `workspace`，不允许越界或符号链接。下载先写临时文件，成功后替换目标；不会把半个文件留在目标路径。`overwrite=false` 可拒绝覆盖，默认允许覆盖。目录同步不删除未列出的本地或远端文件。
 - 下载签名 URL 仅在 SDK 内部消费，不返回给模型，也不附带 Matrix Token。文件上传使用 Task Service 的 multipart PUT 接口，不重试不确定的写操作。
+
+### Matrix 房间附件
+
+注册相同的工具和 Skills 后即可使用，无需修改 AG-UI / OpenAI 消息格式。自建 Server 继续传递上述框架原生 `metadata`，不需要提前下载。
+
+| 工具 | 参数 | 成功结果 `data` |
+|---|---|---|
+| `agentteams_download_room_file` | `event_id` | `event_id`、`local_path`、`filename`、`content_type`、`size` |
+| `agentteams_send_room_file` | `local_path`、可选 `caption` | `event_id`、`filename`、`status: "sent"` |
+
+群聊可先上传附件，再回复附件并 @Agent。输入包含文件摘要及事件 ID；SDK 使用当前房间和 Matrix Token 取得附件，不向模型暴露 Token 或媒体 URL。不要求 Team 成员关系，但仍由 Matrix 校验房间访问权限。原有 Task/Team 工具权限不变。
+
+下载使用独立的 `attachments/` 子目录，按实际流量检查媒体上限，失败/取消清理半文件。成功下载的文件由应用管理保留周期。发送只允许工作目录内普通文件；PNG/JPEG/GIF/WebP 发送为图片，其他格式发送为普通附件，不支持加密附件和跨服务器媒体。
+
+下载不包含文件解析。应用需另外注册框架已有的文本、文档或图片读取工具，并确保同一工作目录可见；图片还需要视觉模型。缺少这些能力时应明确告知用户，不把本地路径当作图片内容。
+
+发送完成后 Matrix 主时间线出现回复当前消息的附件，不自动 Mention，不提交 Task Result、不替换 Working 消息或结束 Run。上传成功不等于发送成功，只有 `status: "sent"` 才确认送达。发送响应丢失时 SDK 最多显式重试一次同一事务和凭证，不重新上传；仍无法确认则返回 `COLLABORATION_ROOM_FILE_SEND_UNKNOWN`，不得盲目重发。
+
+先升级协作包和 Agent，再升级支持附件摘要的 Matrix 转发组件。上线前需完成实际文件下载、视觉读取和 Matrix 附件回传验证。
 
 此模块不负责接收 Matrix 消息、唤醒应用、维持 Agent 对话历史或替代服务端权限校验。可以使用自己的 HTTP 服务、消息消费入口或 AgentCoreServer；在每次请求中传入框架原生上下文即可。手动调用工具时使用 `tool.call(arguments, metadata)`。使用方负责等在途请求结束后再关闭资源。
 

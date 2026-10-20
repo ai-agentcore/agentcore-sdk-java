@@ -37,6 +37,9 @@ public final class Collaboration implements AutoCloseable {
         files, load and follow `file-sharing`. If a required Skill is unavailable, do not perform
         collaboration writes.
 
+        Before downloading chat attachments or sending local files to the current chat, load
+        `room-files`. After downloading, use the application's existing file or image reading tools.
+
         For assigned Subtask work, produce only the requested deliverables and perform only explicitly
         required checks or checks necessary to establish usability. Once they pass, submit a short Result.
         After submission succeeds, reply with one short sentence that it awaits review; do not restate the
@@ -52,6 +55,8 @@ public final class Collaboration implements AutoCloseable {
     private final TeamsProvider teams;
     private final TaskServiceClient tasks;
     private final CollaborationFiles files;
+    private final MatrixFileClient roomFiles;
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(Collaboration.class);
     private final Path workspace;
     private Path skillDirectory;
     private List<io.agentcore.skill.Skill> builtInSkills;
@@ -60,6 +65,7 @@ public final class Collaboration implements AutoCloseable {
     public Collaboration(TeamsProvider teams, TaskServiceClient tasks, Path workspace) {
         this.teams = teams; this.tasks = tasks; this.workspace = workspace.toAbsolutePath().normalize();
         this.files = new CollaborationFiles(tasks, this.workspace);
+        this.roomFiles = tasks.roomFiles(files);
     }
     public static Collaboration auto() {
         return auto(Path.of("."));
@@ -156,8 +162,45 @@ public final class Collaboration implements AutoCloseable {
                 add(result, "filesync_" + operation, parameters, transfer ? List.of("path", "local_path") : List.of("path"), false,
                     (s, args, context) -> files.sync(s, team(s, context), operation, args));
             }
+            addRoomTool(result, "download_room_file", "Download an attachment by exact event_id into the workspace. Use existing reading tools to inspect it.",
+                fields("event_id"), List.of("event_id"),
+                (s, args, context) -> roomFiles.download(s, context, Json.text(args.get("event_id"), "event_id")));
+            addRoomTool(result, "send_room_file", "Send a workspace file or image to the current chat. Report delivery only after success.",
+                fields("local_path", "caption"), List.of("local_path"),
+                (s, args, context) -> roomFiles.send(s, context, Json.text(args.get("local_path"), "local_path"),
+                    args.get("caption") == null ? null : Json.text(args.get("caption"), "caption")));
             return List.copyOf(result);
         });
+    }
+    private void addRoomTool(List<Tool> tools, String name, String description, Map<String, Object> properties,
+            List<String> required, CollaborationCall call) {
+        tools.add(new Tool("agentteams_" + name, description,
+            Map.of("type", "object", "properties", properties, "required", required, "additionalProperties", false),
+            (args, metadata) -> Mono.defer(() -> {
+                checkOpen();
+                var context = (CollaborationContext) metadata.get(CollaborationContext.KEY);
+                if (context == null) return Mono.error(new MatrixFileClient.Failure(
+                    "CONTEXT_REQUIRED", "A current Matrix room context is required.", false));
+                long started = System.nanoTime();
+                LOG.info("agentcore.room_file.started operation={} roomId={} requestEventId={} attachmentEventId={}",
+                    name, context.roomId(), context.eventId(), args.get("event_id"));
+                // Room membership is checked by Matrix, not Task Service or Team role checks.
+                return teams.snapshot().switchIfEmpty(Mono.error(new MatrixFileClient.Failure(
+                    "DISABLED", "Collaboration identity is unavailable.", false)))
+                    .flatMap(snapshot -> call.apply(snapshot, args, context))
+                    .doOnSuccess(data -> LOG.info("agentcore.room_file.completed operation={} roomId={} requestEventId={} eventId={} bytes={} durationMs={}",
+                        name, context.roomId(), context.eventId(), data.get("event_id"), data.get("size"),
+                        (System.nanoTime() - started) / 1_000_000))
+                    .doOnError(error -> LOG.warn("agentcore.room_file.failed operation={} roomId={} requestEventId={} code={} durationMs={}",
+                        name, context.roomId(), context.eventId(),
+                        error instanceof MatrixFileClient.Failure failure ? failure.code : "COLLABORATION_ARGUMENT_INVALID",
+                        (System.nanoTime() - started) / 1_000_000))
+                    .map(data -> (Object) Map.of("ok", true, "data", data));
+            }).onErrorResume(MatrixFileClient.Failure.class, error -> Mono.just(Map.of(
+                "ok", false, "code", error.code, "retryable", error.retryable, "message", error.getMessage())))
+                .onErrorResume(error -> error instanceof IllegalArgumentException || error instanceof java.nio.file.FileSystemException,
+                    error -> Mono.just(Map.of("ok", false, "code", "COLLABORATION_ARGUMENT_INVALID", "retryable", false,
+                        "message", "Check the attachment event_id and workspace file arguments.")))));
     }
     private void add(List<Tool> tools, String name, Map<String, Object> properties, List<String> required,
             boolean write, CollaborationCall call) {
@@ -221,7 +264,7 @@ public final class Collaboration implements AutoCloseable {
         if (builtInSkills != null) return builtInSkills;
         if (skillDirectory == null) skillDirectory = Files.createTempDirectory("agentcore-worker-skills-");
         var result = new ArrayList<io.agentcore.skill.Skill>();
-        for (String name : List.of("task-execution", "file-sharing")) {
+        for (String name : List.of("task-execution", "file-sharing", "room-files")) {
             Path root = Files.createDirectories(skillDirectory.resolve(name));
             try (var input = Collaboration.class.getResourceAsStream("/worker-skills/" + name + "/SKILL.md")) {
                 if (input == null) throw new java.io.IOException("Missing packaged Worker Skill: " + name);

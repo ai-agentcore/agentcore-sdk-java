@@ -84,7 +84,7 @@ class CollaborationTest {
         var provider = new TeamsProvider(directory.resolve("teams.yaml"));
         var collaboration = new Collaboration(provider, new TaskServiceClient(() -> Mono.just(Map.of())));
         var tools = collaboration.tools().block();
-        assertEquals(24, tools.size());
+        assertEquals(26, tools.size());
         var query = tools.stream().filter(t -> t.name().equals("agentteams_list_tasks")).findFirst().orElseThrow();
         assertToolFailure(query.call(Map.of()).block(), "COLLABORATION_DISABLED");
         Files.writeString(directory.resolve("teams.yaml"), """
@@ -95,7 +95,7 @@ class CollaborationTest {
               self: {name: worker, runtimeName: worker-1}
               teams: []
             """);
-        assertEquals(24, collaboration.tools().block().size());
+        assertEquals(26, collaboration.tools().block().size());
         assertToolFailure(query.call(Map.of()).block(), "COLLABORATION_TEAM_UNAVAILABLE");
     }
     @Test void promptCompositionPreservesApplicationIdentityWithoutReadingTeams() throws Exception {
@@ -108,7 +108,7 @@ class CollaborationTest {
             assertTrue(prompt.contains("`" + directory.toAbsolutePath().normalize() + "`"));
             assertTrue(prompt.contains("`local_path` and `output_path` relative to this directory"));
             assertTrue(collaboration.composePrompt(" \n").startsWith("## Team collaboration capabilities"));
-            assertEquals(24, collaboration.tools().block().size());
+            assertEquals(26, collaboration.tools().block().size());
             assertEquals(0, loads.get());
         }
     }
@@ -291,7 +291,7 @@ class CollaborationTest {
             var context = Map.<String, Object>of(CollaborationContext.KEY, new CollaborationContext("s", "team-1", "!task-room", "event", "task"));
             var tools = collaboration.tools().block()
                 .stream().collect(java.util.stream.Collectors.toMap(io.agentcore.tool.Tool::name, t -> t));
-            assertEquals(24, tools.size());
+            assertEquals(26, tools.size());
             var result = tools.get("agentteams_write_subtask_file_from_path").call(Map.of("subtask_id", "sub-1", "path", "report.txt", "local_path", "report.txt"), context).block(Duration.ofSeconds(5));
             assertTrue(Json.write(result).contains("files/report.txt"));
             assertTrue(uploads.get(0).contains("artifact-content"));
@@ -302,7 +302,7 @@ class CollaborationTest {
                 .call(Map.of("subtask_id", "sub-1", "path", "x", "local_path", "../outside.txt"), context).block());
             assertEquals(1, uploads.size());
             var skills = collaboration.skills().block();
-            assertEquals(List.of("task-execution", "file-sharing"), skills.stream().map(io.agentcore.skill.Skill::name).toList());
+            assertEquals(List.of("task-execution", "file-sharing", "room-files"), skills.stream().map(io.agentcore.skill.Skill::name).toList());
             assertTrue(skills.stream().allMatch(skill -> Files.isRegularFile(skill.root().resolve("SKILL.md"))));
         } finally { server.stop(0); }
     }
