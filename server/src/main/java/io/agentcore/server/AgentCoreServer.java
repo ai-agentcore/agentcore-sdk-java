@@ -68,7 +68,9 @@ public final class AgentCoreServer implements AutoCloseable {
             } catch (IllegalArgumentException | ClassCastException error) {
                 return response.status(400).sendString(Mono.just("Invalid request body")).then();
             }
-            var execution = handler.invoke(input);
+            var execution = Flux.usingWhen(Mono.fromSupplier(() -> new io.agentcore.runtime.RequestContext(input.headers())),
+                scope -> Flux.defer(() -> handler.invoke(input)).contextWrite(context -> context.put(
+                    io.agentcore.runtime.RequestContext.class, scope)), io.agentcore.runtime.RequestContext::closeAsync);
             if (protocol.equals("openai") && !Boolean.TRUE.equals(input.body().get("stream")))
                 return execution.collectList().flatMap(events -> response.header("Content-Type", "application/json")
                     .sendString(Mono.just(Json.write(Protocols.completion(input, events)))).then())

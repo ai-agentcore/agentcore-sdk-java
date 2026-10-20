@@ -20,6 +20,51 @@ import reactor.test.StepVerifier;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ServerProtocolTest {
+    @Test void concurrentStreamingRequestsKeepTheirAccessorContextAcrossSchedulerChanges() throws Exception {
+        var received = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        try (var server = new AgentCoreServer(input -> Flux.deferContextual(context -> {
+            String wat = io.agentcore.runtime.RequestContext.accessorWat(context);
+            assertEquals(input.headers().get("x-agentcore-accessor-wat"), wat);
+            received.add(wat);
+            return Flux.just(AgentEvent.text("accessor-test", wat));
+        }).subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())).start(0)) {
+            var client = HttpClient.newHttpClient();
+            var futures = List.of("wat-a", "wat-b").stream().map(wat -> client.sendAsync(
+                HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + server.port() + "/agui"))
+                    .header("Content-Type", "application/json").header("X-AgentCore-Accessor-WAT", wat)
+                    .POST(HttpRequest.BodyPublishers.ofString(Json.write(Map.of("threadId", "same-thread",
+                        "runId", wat, "messages", List.of())))).build(), HttpResponse.BodyHandlers.ofString())).toList();
+            for (var future : futures) assertEquals(200, future.get(5, java.util.concurrent.TimeUnit.SECONDS).statusCode());
+            assertEquals(List.of("wat-a", "wat-b"), received.stream().sorted().toList());
+        }
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"completed", "failed", "cancelled"})
+    void requestResourcesCloseOnCompletionErrorAndDisconnect(String finish) throws Exception {
+        var started = new java.util.concurrent.CountDownLatch(1);
+        var cleaned = new java.util.concurrent.CountDownLatch(1);
+        try (var server = new AgentCoreServer(input -> Flux.deferContextual(context -> {
+            var scope = context.get(io.agentcore.runtime.RequestContext.class);
+            scope.onClose(() -> Mono.fromRunnable(cleaned::countDown));
+            started.countDown();
+            if (finish.equals("failed")) return Flux.error(new IllegalStateException("handler failed"));
+            var text = Flux.just(AgentEvent.text("cleanup-test", "first"));
+            return finish.equals("cancelled") ? text.concatWith(Flux.never()) : text;
+        })).start(0)) {
+            var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + server.port() + "/openai/v1/chat/completions"))
+                .header("Content-Type", "application/json").header("X-AgentCore-Accessor-WAT", "wat")
+                .POST(HttpRequest.BodyPublishers.ofString(Json.write(Map.of("messages", List.of(), "stream", finish.equals("cancelled"))))).build();
+            var client = HttpClient.newHttpClient();
+            if (finish.equals("cancelled")) {
+                var response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                assertTrue(started.await(5, java.util.concurrent.TimeUnit.SECONDS));
+                response.body().close();
+            } else {
+                assertEquals(finish.equals("failed") ? 500 : 200, client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
+            }
+            assertTrue(cleaned.await(5, java.util.concurrent.TimeUnit.SECONDS));
+        }
+    }
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings = {"/agui", "/openai/v1/chat/completions"})
     void sessionHeaderRemainsOrdinaryMetadata(String path) throws Exception {

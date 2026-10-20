@@ -144,7 +144,7 @@ public final class AgentCore implements AutoCloseable {
                 Supplier<Mono<Map<String, String>>> headers = credentialName == null ? () -> Mono.just(Headers.merge(value.headers(), custom))
                     : () -> credentials().forMcp(credentialName, Json.text(item.get("mcpServerId"), "mcpServerId"))
                         .map(credential -> Headers.merge(value.headers(), credential.asHeaders(), custom));
-                return track(new MCPClient(url, MCPClient.Transport.STREAMABLE_HTTP, headers));
+                return track(MCPClient.platform(url, MCPClient.Transport.STREAMABLE_HTTP, headers));
             }));
     }
     public MCPClient directMcp(URI url, MCPClient.Transport transport, Supplier<Mono<Map<String, String>>> headers) {

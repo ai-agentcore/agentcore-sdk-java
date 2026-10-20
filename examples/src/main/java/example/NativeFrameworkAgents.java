@@ -23,13 +23,14 @@ public final class NativeFrameworkAgents {
         return SpringAIEvents.stream(model, new org.springframework.ai.chat.prompt.Prompt(input, options));
     }
 
-    public interface Assistant { dev.langchain4j.service.TokenStream chat(String input); }
+    public interface Assistant { dev.langchain4j.service.TokenStream chat(@dev.langchain4j.service.UserMessage String input,
+        dev.langchain4j.invocation.InvocationParameters parameters); }
 
     public static Flux<AgentEvent> langchain4j(dev.langchain4j.model.chat.StreamingChatModel model,
             List<Tool> tools, String input) {
         var assistant = dev.langchain4j.service.AiServices.builder(Assistant.class)
             .streamingChatModel(model).tools(AgentCoreLangChain4j.tools(tools)).build();
-        return LangChain4jEvents.from(() -> assistant.chat(input));
+        return LangChain4jEvents.from(parameters -> assistant.chat(input, parameters));
     }
 
     public static Flux<AgentEvent> agentscope(io.agentscope.core.model.Model model,
@@ -38,6 +39,6 @@ public final class NativeFrameworkAgents {
             var toolkit = new io.agentscope.core.tool.Toolkit();
             tools.forEach(tool -> toolkit.registerAgentTool(AgentCoreAgentScope.tool(tool)));
             return io.agentscope.core.ReActAgent.builder().name("assistant").model(model).toolkit(toolkit).build();
-        }, agent -> AgentScopeEvents.from(agent.streamEvents(input)), io.agentscope.core.ReActAgent::close);
+        }, agent -> AgentScopeEvents.from(context -> agent.streamEvents(input, context)), io.agentscope.core.ReActAgent::close);
     }
 }

@@ -11,15 +11,16 @@ import io.agentcore.tool.Tool;
 import java.util.ArrayList;
 
 public final class LangChainAgent {
-    public interface Assistant { TokenStream chat(String input); }
+    public interface Assistant { TokenStream chat(@dev.langchain4j.service.UserMessage String input,
+        dev.langchain4j.invocation.InvocationParameters parameters); }
     public static void main(String[] args) {
         try (var core = AgentCore.auto()) {
             var model = AgentCoreLangChain4j.streamingModel(core.model("my-connection", "my-model").block());
             var tools = new ArrayList<Tool>(core.mcp("my-mcp").block().listTools().block());
             tools.addAll(core.skills().load("my-skill").block().tools());
             var assistant = AiServices.builder(Assistant.class).streamingChatModel(model).tools(AgentCoreLangChain4j.tools(tools)).build();
-            try (var server = new AgentCoreServer(request -> LangChain4jEvents.from(() -> assistant.chat(
-                Json.text(request.messages().get(request.messages().size() - 1).get("content"), "user content")))).start(8080)) {
+            try (var server = new AgentCoreServer(request -> LangChain4jEvents.from(parameters -> assistant.chat(
+                Json.text(request.messages().get(request.messages().size() - 1).get("content"), "user content"), parameters))).start(8080)) {
                 server.await();
             }
         }

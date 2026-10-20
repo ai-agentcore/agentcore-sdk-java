@@ -7,7 +7,8 @@ import java.util.Set;
 
 public final class Headers {
     private static final Set<String> RESERVED = Set.of("authorization", "host", "content-length",
-        "connection", "transfer-encoding", "mcp-session-id", "mcp-protocol-version", "upgrade", "last-event-id", "content-type", "accept");
+        "connection", "transfer-encoding", "mcp-session-id", "mcp-protocol-version", "upgrade", "last-event-id", "content-type", "accept",
+        "x-agentcore-accessor-wat", "x-agentcore-accessor-jwt", "x-agentcore-accessor-matrixid");
     private Headers() {}
     @SafeVarargs
     public static Map<String, String> merge(Map<String, String> platform, Map<String, String>... additions) {
