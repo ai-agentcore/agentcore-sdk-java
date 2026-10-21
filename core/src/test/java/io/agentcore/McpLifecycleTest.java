@@ -80,6 +80,17 @@ class McpLifecycleTest {
             assertTrue(calls.stream().allMatch(call -> call.get("auth").equals("Bearer agent-key")));
             assertFalse(new io.agentcore.runtime.RequestContext(Map.of("X-AgentCore-Accessor-WAT", "secret"))
                 .toString().contains("secret"));
+            calls.clear();
+            try (var direct = new MCPClient(uri, MCPClient.Transport.STREAMABLE_HTTP,
+                    () -> Mono.just(Map.of("Authorization", "Bearer direct-key")))) {
+                var directTools = direct.listTools().contextWrite(context -> context.put(io.agentcore.runtime.RequestContext.class, scope))
+                    .block(Duration.ofSeconds(5));
+                directTools.get(0).call(Map.of()).contextWrite(context -> context.put(io.agentcore.runtime.RequestContext.class, scope))
+                    .block(Duration.ofSeconds(5));
+                assertFalse(calls.isEmpty());
+                assertTrue(calls.stream().allMatch(call -> call.get("wat").equals("null")));
+                assertTrue(calls.stream().allMatch(call -> call.get("auth").equals("Bearer direct-key")));
+            }
         } finally { server.stop(0); executor.shutdownNow(); }
     }
 
