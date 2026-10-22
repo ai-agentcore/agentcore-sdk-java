@@ -3,9 +3,9 @@
   <parent><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk-parent</artifactId><version>0.1.1</version></parent>
   <artifactId>agentcore-collaboration</artifactId>
   <name>AgentCore Collaboration</name>
-  <version>0.1.0</version>
+  <version>0.1.1</version>
   <dependencies>
-    <dependency><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk</artifactId><version>0.1.0</version></dependency>
+    <dependency><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk</artifactId><version>0.1.3</version></dependency>
     <dependency><groupId>ch.qos.logback</groupId><artifactId>logback-classic</artifactId><version>1.5.18</version><scope>test</scope></dependency>
   </dependencies>
 </project>

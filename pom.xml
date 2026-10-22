@@ -29,7 +29,7 @@
     <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <!-- Collaboration has its own release version; used only by examples and integration tests. -->
-    <collaboration.version>0.1.0</collaboration.version>
+    <collaboration.version>0.1.1</collaboration.version>
     <central.autoPublish>false</central.autoPublish>
     <central.waitUntil>validated</central.waitUntil>
     <reactor.version>3.8.7</reactor.version>
