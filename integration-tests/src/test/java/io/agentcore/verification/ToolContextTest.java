@@ -89,6 +89,42 @@ class ToolContextTest {
     @AfterEach void close() { core.close(); server.stop(0); }
 
     @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"spring", "langchain4j", "agentscope"})
+    void eventAdaptersCarryAccessorIdentityThroughNativeToolCallbacks(String framework) {
+        var accessorTool = new Tool(tool.name(), tool.description(), tool.parameters(), (args, metadata) ->
+            Mono.deferContextual(context -> {
+                String wat = io.agentcore.runtime.RequestContext.accessorWat(context);
+                seen.put((String) args.get("request_id"), wat == null ? "absent" : wat);
+                return Mono.just((Object) "Tool done.");
+            }));
+        var springModel = AgentCoreSpringAI.model(model);
+        var options = org.springframework.ai.model.tool.ToolCallingChatOptions.builder()
+            .toolCallbacks(List.of(AgentCoreSpringAI.tool(accessorTool))).build();
+        var assistant = AiServices.builder(StreamingAssistant.class)
+            .streamingChatModel(AgentCoreLangChain4j.streamingModel(model))
+            .tools(AgentCoreLangChain4j.tools(List.of(accessorTool))).build();
+        var toolkit = new io.agentscope.core.tool.Toolkit(); toolkit.registerAgentTool(AgentCoreAgentScope.tool(accessorTool));
+        try (var agent = io.agentscope.core.ReActAgent.builder().name("accessor-test")
+                .model(AgentCoreAgentScope.model(model)).toolkit(toolkit).maxIters(3).build()) {
+            java.util.function.Function<String, Flux<io.agentcore.event.AgentEvent>> invoke = id -> {
+                if (framework.equals("spring")) return io.agentcore.springai.SpringAIEvents.stream(springModel,
+                    new org.springframework.ai.chat.prompt.Prompt(id, options));
+                if (framework.equals("langchain4j")) return LangChain4jEvents.from(parameters -> assistant.chat(id, parameters));
+                return io.agentcore.agentscope.AgentScopeEvents.from(context -> agent.streamEvents(id,
+                    io.agentscope.core.agent.RuntimeContext.builder(context).sessionId(id).build()));
+            };
+            Flux.just("one", "two").flatMap(id -> invoke.apply(id).collectList()
+                .contextWrite(context -> context.put(io.agentcore.runtime.RequestContext.class,
+                    new io.agentcore.runtime.RequestContext(Map.of("X-AgentCore-Accessor-WAT", "private-wat-" + id))))
+                .subscribeOn(Schedulers.boundedElastic()), 2).then().block(Duration.ofSeconds(20));
+            invoke.apply("three").collectList().subscribeOn(Schedulers.boundedElastic()).block(Duration.ofSeconds(20));
+            assertEquals(Map.of("one", "private-wat-one", "two", "private-wat-two", "three", "absent"), seen);
+            assertTrue(modelRequests.stream().noneMatch(body -> body.contains("private-wat-")
+                || body.contains(io.agentcore.runtime.RequestContext.KEY)));
+        }
+    }
+
+    @ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
     void springContinuesAfterExpectedCollaborationFailure(boolean streaming) throws Exception {
         var teams = new io.agentcore.collaboration.TeamsProvider(() -> Mono.just("""

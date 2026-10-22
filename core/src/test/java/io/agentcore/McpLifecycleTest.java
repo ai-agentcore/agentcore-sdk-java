@@ -19,6 +19,87 @@ import reactor.core.publisher.Mono;
 import static org.junit.jupiter.api.Assertions.*;
 
 class McpLifecycleTest {
+    @Test void cleanupFailureDoesNotSkipOtherRequestResources() {
+        var scope = new io.agentcore.runtime.RequestContext(Map.of());
+        var cleaned = new AtomicInteger();
+        scope.onClose(() -> Mono.error(new IllegalStateException("first cleanup failed")));
+        scope.onClose(() -> Mono.fromRunnable(cleaned::incrementAndGet));
+        assertThrows(IllegalStateException.class, () -> scope.closeAsync().block(Duration.ofSeconds(1)));
+        assertEquals(1, cleaned.get());
+        scope.closeAsync().block(Duration.ofSeconds(1));
+        assertEquals(1, cleaned.get());
+    }
+
+    @Test void managedAccessorSessionsFollowTheCurrentCallerIncludingDiscoveredTools() throws Exception {
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        var executor = java.util.concurrent.Executors.newCachedThreadPool(); server.setExecutor(executor);
+        var calls = new java.util.concurrent.CopyOnWriteArrayList<Map<String, String>>();
+        server.createContext("/mcp", exchange -> {
+            try {
+                if (!exchange.getRequestMethod().equals("POST")) { exchange.sendResponseHeaders(405, -1); return; }
+                var request = Json.read(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                calls.add(Map.of("wat", String.valueOf(exchange.getRequestHeaders().getFirst("X-AgentCore-Accessor-WAT")),
+                    "auth", String.valueOf(exchange.getRequestHeaders().getFirst("Authorization")),
+                    "method", String.valueOf(request.get("method")),
+                    "business", String.valueOf(exchange.getRequestHeaders().getFirst("X-Call")),
+                    "session", String.valueOf(exchange.getRequestHeaders().getFirst("Mcp-Session-Id"))));
+                if ("initialize".equals(request.get("method"))) exchange.getResponseHeaders().set("Mcp-Session-Id", java.util.UUID.randomUUID().toString());
+                if (request.get("id") == null) { exchange.sendResponseHeaders(202, -1); return; }
+                byte[] body = Json.write(Map.of("jsonrpc", "2.0", "id", request.get("id"),
+                    "result", StdioMcpFixture.result(request))).getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, body.length); exchange.getResponseBody().write(body);
+            } finally { exchange.close(); }
+        }); server.start();
+        var uri = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/mcp");
+        try (var mcp = MCPClient.platform(uri, MCPClient.Transport.STREAMABLE_HTTP,
+                () -> Mono.just(Map.of("Authorization", "Bearer agent-key")))) {
+            var scope = new io.agentcore.runtime.RequestContext(Map.of("X-AgentCore-Accessor-WAT", "user-a"));
+            var tools = mcp.listTools().contextWrite(context -> context.put(io.agentcore.runtime.RequestContext.class, scope))
+                .block(Duration.ofSeconds(5));
+            Flux.fromIterable(List.of("first", "second")).flatMap(value -> mcp.callTool("echo", Map.of(), Map.of("X-Call", value))
+                .contextWrite(context -> context.put(io.agentcore.runtime.RequestContext.class, scope)))
+                .then().block(Duration.ofSeconds(5));
+            mcp.callTool("echo", Map.of()).contextWrite(context -> context.put(io.agentcore.runtime.RequestContext.class, scope))
+                .block(Duration.ofSeconds(5));
+            assertEquals(1, calls.stream().filter(call -> call.get("method").equals("initialize")).count());
+            var scopedCalls = calls.stream().filter(call -> call.get("method").equals("tools/call")).toList();
+            assertEquals(List.of("first", "null", "second"), scopedCalls.stream().map(call -> call.get("business")).sorted().toList());
+            assertEquals(1, scopedCalls.stream().map(call -> call.get("session")).distinct().count());
+            assertThrows(IllegalArgumentException.class, () -> mcp.callTool("echo", Map.of(), Map.of("X-AgentCore-Accessor-WAT", "forged"))
+                .contextWrite(context -> context.put(io.agentcore.runtime.RequestContext.class, scope)).block());
+            scope.closeAsync().block(Duration.ofSeconds(5));
+            Flux.fromIterable(List.of("user-b", "user-c")).flatMap(wat -> tools.get(0).call(Map.of())
+                .contextWrite(context -> context.put(io.agentcore.runtime.RequestContext.class,
+                    new io.agentcore.runtime.RequestContext(Map.of("X-AgentCore-Accessor-WAT", wat)))))
+                .then().block(Duration.ofSeconds(5));
+            mcp.callTool("echo", Map.of()).block(Duration.ofSeconds(5));
+            assertEquals(List.of("null", "user-a", "user-a", "user-a", "user-b", "user-c"), calls.stream()
+                .filter(call -> call.get("method").equals("tools/call")).map(call -> call.get("wat")).sorted().toList());
+            assertEquals(4, calls.stream().filter(call -> call.get("method").equals("initialize")).count());
+            assertTrue(calls.stream().allMatch(call -> call.get("auth").equals("Bearer agent-key")));
+            assertFalse(new io.agentcore.runtime.RequestContext(Map.of("X-AgentCore-Accessor-WAT", "secret"))
+                .toString().contains("secret"));
+            calls.clear();
+            try (var direct = new MCPClient(uri, MCPClient.Transport.STREAMABLE_HTTP,
+                    () -> Mono.just(Map.of("Authorization", "Bearer direct-key")))) {
+                var directTools = direct.listTools().contextWrite(context -> context.put(io.agentcore.runtime.RequestContext.class, scope))
+                    .block(Duration.ofSeconds(5));
+                directTools.get(0).call(Map.of()).contextWrite(context -> context.put(io.agentcore.runtime.RequestContext.class, scope))
+                    .block(Duration.ofSeconds(5));
+                assertFalse(calls.isEmpty());
+                assertTrue(calls.stream().allMatch(call -> call.get("wat").equals("null")));
+                assertTrue(calls.stream().allMatch(call -> call.get("auth").equals("Bearer direct-key")));
+            }
+        } finally { server.stop(0); executor.shutdownNow(); }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+        "X-AgentCore-Accessor-WAT", "x-agentcore-accessor-jwt", "X-AgentCore-Accessor-MatrixID" })
+    void rejectsFixedAccessorHeaders(String name) {
+        assertThrows(IllegalArgumentException.class, () -> Headers.merge(Map.of(), Map.of(name, "forged")));
+    }
     @Test void metadataTimeoutDoesNotCloseSessionOrFailConcurrentTool() throws Exception {
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         var executor = java.util.concurrent.Executors.newCachedThreadPool(); server.setExecutor(executor);
