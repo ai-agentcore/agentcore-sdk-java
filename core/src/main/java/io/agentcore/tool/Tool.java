@@ -16,6 +16,11 @@ public record Tool(String name, String description, Map<String, Object> paramete
     public Mono<Object> call(Map<String, Object> arguments) { return call(arguments, Map.of()); }
     /** Application-provided execution metadata, separate from model-visible arguments. */
     public Mono<Object> call(Map<String, Object> arguments, Map<String, Object> context) {
-        return Mono.defer(() -> invoke.apply(arguments, context));
+        return Mono.defer(() -> invoke.apply(arguments, context)).contextWrite(current -> {
+            Object request = context.get(io.agentcore.runtime.RequestContext.KEY);
+            return !current.hasKey(io.agentcore.runtime.RequestContext.class)
+                && request instanceof io.agentcore.runtime.RequestContext
+                ? current.put(io.agentcore.runtime.RequestContext.class, request) : current;
+        });
     }
 }

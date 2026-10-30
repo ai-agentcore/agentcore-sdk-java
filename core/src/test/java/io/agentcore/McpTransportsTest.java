@@ -34,6 +34,7 @@ class McpTransportsTest {
         var output = new AtomicReference<OutputStream>();
         var done = new CountDownLatch(1);
         var auth = new CopyOnWriteArrayList<String>();
+        var callHeaders = new CopyOnWriteArrayList<String>();
         server.createContext("/sse", exchange -> {
             auth.add(exchange.getRequestHeaders().getFirst("Authorization"));
             exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
@@ -47,6 +48,7 @@ class McpTransportsTest {
         server.createContext("/messages", exchange -> {
             auth.add(exchange.getRequestHeaders().getFirst("Authorization"));
             var request = Json.read(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            if ("tools/call".equals(request.get("method"))) callHeaders.add(exchange.getRequestHeaders().getFirst("X-Call"));
             if (request.get("id") != null) {
                 String data = "event: message\ndata: " + Json.write(Map.of("jsonrpc", "2.0", "id", request.get("id"),
                     "result", StdioMcpFixture.result(request))) + "\n\n";
@@ -58,7 +60,9 @@ class McpTransportsTest {
         try (var mcp = new MCPClient(URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/sse"),
                 MCPClient.Transport.SSE, () -> Mono.just(Map.of("Authorization", "Bearer fixture")))) {
             assertEquals("echo", mcp.listTools().block(Duration.ofSeconds(10)).get(0).name());
-            assertFalse(mcp.callTool("echo", Map.of()).block(Duration.ofSeconds(10)).isError());
+            for (String value : List.of("first", "second"))
+                assertFalse(mcp.callTool("echo", Map.of(), Map.of("X-Call", value)).block(Duration.ofSeconds(10)).isError());
+            assertEquals(List.of("first", "second"), callHeaders);
             assertTrue(auth.size() >= 4);
             assertTrue(auth.stream().allMatch("Bearer fixture"::equals));
         } finally { done.countDown(); server.stop(0); executor.shutdownNow(); }

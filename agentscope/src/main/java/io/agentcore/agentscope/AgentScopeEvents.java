@@ -11,6 +11,11 @@ import reactor.core.publisher.Flux;
 
 public final class AgentScopeEvents {
     private AgentScopeEvents() {}
+    public static Flux<AgentEvent> from(java.util.function.Function<io.agentscope.core.agent.RuntimeContext,
+            Flux<? extends io.agentscope.core.event.AgentEvent>> source) {
+        return Flux.deferContextual(context -> from(source.apply(io.agentscope.core.agent.RuntimeContext.builder()
+            .putAll(io.agentcore.runtime.RequestContext.toolContext(context)).build())));
+    }
     public static Flux<AgentEvent> from(Flux<? extends io.agentscope.core.event.AgentEvent> source) {
         return Flux.defer(() -> {
             Map<String, String> messageIds = new HashMap<>();

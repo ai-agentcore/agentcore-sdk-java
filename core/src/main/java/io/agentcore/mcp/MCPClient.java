@@ -1,6 +1,7 @@
 package io.agentcore.mcp;
 
 import io.agentcore.Headers;
+import io.agentcore.runtime.RequestContext;
 import io.agentcore.tool.Tool;
 import io.modelcontextprotocol.client.McpAsyncClient;
 import io.modelcontextprotocol.client.McpClient;
@@ -13,7 +14,6 @@ import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpError;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.net.URI;
-import java.net.http.HttpRequest;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -22,7 +22,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import reactor.core.publisher.Mono;
 
-/** A persistent MCP session. Header suppliers are evaluated when a session connects. */
+/** Persistent MCP sessions with headers evaluated for every HTTP request. */
 public final class MCPClient implements AutoCloseable {
     public enum Transport { STREAMABLE_HTTP, SSE }
     private final Supplier<Mono<McpClientTransport>> transport;
@@ -31,23 +31,44 @@ public final class MCPClient implements AutoCloseable {
     private Mono<McpAsyncClient> connection;
     private McpAsyncClient active;
     private boolean closed;
+    private boolean managed;
+    private URI managedUrl;
+    private Transport managedProtocol;
+    private Supplier<Mono<Map<String, String>>> managedHeaders;
+    private static final Object CALL_HEADERS = new Object();
+    private final java.util.Map<RequestContext, MCPClient> scoped = new java.util.IdentityHashMap<>();
     private final reactor.core.publisher.Sinks.Empty<Void> closing = reactor.core.publisher.Sinks.empty();
 
     public MCPClient(URI url, Transport protocol, Supplier<Mono<Map<String, String>>> headers) {
-        this(() -> Mono.defer(headers).map(values -> {
-            var request = HttpRequest.newBuilder();
-            Headers.merge(values).forEach(request::header);
+        this(() -> Mono.fromSupplier(() -> {
+            io.modelcontextprotocol.client.transport.customizer.McpAsyncHttpClientRequestCustomizer customizer =
+                (request, method, uri, body, transportContext) -> Mono.deferContextual(context ->
+                    Mono.defer(headers).map(values -> {
+                        Map<String, String> additions = context.getOrDefault(CALL_HEADERS, Map.of());
+                        Headers.merge(values, additions).forEach(request::setHeader);
+                        return request;
+                    }));
             String base = url.getScheme() + "://" + url.getAuthority();
             String path = url.getRawPath() + (url.getRawQuery() == null ? "" : "?" + url.getRawQuery());
             return protocol == Transport.STREAMABLE_HTTP
-                ? HttpClientStreamableHttpTransport.builder(base).endpoint(path).requestBuilder(request)
+                ? HttpClientStreamableHttpTransport.builder(base).endpoint(path).asyncHttpRequestCustomizer(customizer)
                     .connectTimeout(Duration.ofSeconds(10)).build()
-                : HttpClientSseClientTransport.builder(base).sseEndpoint(path).requestBuilder(request)
+                : HttpClientSseClientTransport.builder(base).sseEndpoint(path).asyncHttpRequestCustomizer(customizer)
                     .connectTimeout(Duration.ofSeconds(10)).build();
         }), Duration.ofSeconds(60), Duration.ofMinutes(10));
     }
     private MCPClient(Supplier<Mono<McpClientTransport>> transport, Duration metadataTimeout, Duration toolTimeout) {
         this.transport = transport; this.metadataTimeout = metadataTimeout; this.toolTimeout = toolTimeout;
+    }
+    public static MCPClient platform(URI url, Transport protocol, Supplier<Mono<Map<String, String>>> headers) {
+        var result = new MCPClient(url, protocol, () -> Mono.defer(headers).map(base -> {
+            if (base.keySet().stream().anyMatch(name -> name.toLowerCase(java.util.Locale.ROOT).startsWith("x-agentcore-accessor-")))
+                throw new IllegalArgumentException("Accessor headers must come from the request context");
+            return base;
+        }));
+        result.managed = true;
+        result.managedUrl = url; result.managedProtocol = protocol; result.managedHeaders = headers;
+        return result;
     }
     public static MCPClient stdio(String command, List<String> args, Map<String, String> env) {
         return new MCPClient(() -> Mono.fromSupplier(() -> new StdioClientTransport(
@@ -63,11 +84,43 @@ public final class MCPClient implements AutoCloseable {
     public Mono<McpSchema.CallToolResult> callTool(String name, Map<String, Object> arguments) {
         return execute(client -> client.callTool(new McpSchema.CallToolRequest(name, arguments, null)), toolTimeout);
     }
+    public Mono<List<Tool>> listTools(Map<String, String> headers) {
+        return listTools().contextWrite(context -> context.put(CALL_HEADERS, Headers.merge(Map.of(), headers)));
+    }
+    public Mono<McpSchema.CallToolResult> callTool(String name, Map<String, Object> arguments, Map<String, String> headers) {
+        return callTool(name, arguments).contextWrite(context -> context.put(CALL_HEADERS, Headers.merge(Map.of(), headers)));
+    }
     private <T> Mono<T> execute(Function<McpAsyncClient, Mono<T>> operation, Duration timeout) {
-        return Mono.defer(this::connect).flatMap(client -> operation.apply(client).timeout(timeout)
+        return Mono.deferContextual(context -> {
+            String wat = managed ? RequestContext.accessorWat(context) : null;
+            if (wat != null && !wat.isEmpty()) {
+                RequestContext scope = context.get(RequestContext.class);
+                MCPClient child;
+                synchronized (this) {
+                    if (closed) return Mono.error(new IllegalStateException("MCP client is closed"));
+                    child = scoped.get(scope);
+                    if (child == null) {
+                        child = new MCPClient(managedUrl, managedProtocol, () -> Mono.defer(managedHeaders).map(base -> {
+                            if (base.keySet().stream().anyMatch(name -> name.toLowerCase(java.util.Locale.ROOT).startsWith("x-agentcore-accessor-")))
+                                throw new IllegalArgumentException("Accessor headers must come from the request context");
+                            var values = new java.util.LinkedHashMap<>(base);
+                            values.put(RequestContext.ACCESSOR_WAT, wat);
+                            return values;
+                        }));
+                        scoped.put(scope, child);
+                        MCPClient resource = child;
+                        scope.onClose(() -> resource.closeAsync().doFinally(signal -> {
+                            synchronized (this) { scoped.remove(scope); }
+                        }));
+                    }
+                }
+                return child.execute(operation, timeout);
+            }
+            return Mono.defer(this::connect).flatMap(client -> operation.apply(client).timeout(timeout)
             // A request deadline does not mean the shared Session has disconnected.
             .onErrorResume(error -> error instanceof McpError || error instanceof TimeoutException ? Mono.error(error)
                 : invalidate(client).then(Mono.error(error))));
+        });
     }
     private synchronized Mono<McpAsyncClient> connect() {
         if (closed) return Mono.error(new IllegalStateException("MCP client is closed"));
@@ -94,9 +147,11 @@ public final class MCPClient implements AutoCloseable {
     public Mono<Void> closeAsync() {
         return Mono.defer(() -> {
             McpAsyncClient client;
-            synchronized (this) { closed = true; client = active; active = null; connection = null; }
+            List<MCPClient> scopedClients;
+            synchronized (this) { closed = true; client = active; active = null; connection = null; scopedClients = List.copyOf(scoped.values()); scoped.clear(); }
             closing.tryEmitEmpty();
-            return client == null ? Mono.empty() : client.closeGracefully();
+            return Mono.whenDelayError(reactor.core.publisher.Flux.fromIterable(scopedClients).flatMap(MCPClient::closeAsync).then(),
+                client == null ? Mono.empty() : client.closeGracefully());
         });
     }
     @Override public void close() { closeAsync().block(); }

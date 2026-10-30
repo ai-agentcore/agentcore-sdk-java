@@ -50,7 +50,8 @@ public final class SpringAIEvents {
             };
             var client = org.springframework.ai.chat.client.ChatClient.builder(observedModel)
                 .defaultAdvisors(org.springframework.ai.chat.client.advisor.ToolCallingAdvisor.builder().toolCallingManager(observedTools).build()).build();
-            sink.onDispose(client.prompt(prompt).stream().chatClientResponse().subscribe(ignored -> {}, sink::error, sink::complete));
+            sink.onDispose(client.prompt(prompt).toolContext(io.agentcore.runtime.RequestContext.toolContext(sink.contextView()))
+                .stream().chatClientResponse().subscribe(ignored -> {}, sink::error, sink::complete));
         });
     }
     public static Flux<AgentEvent> from(Flux<? extends Message> messages) {

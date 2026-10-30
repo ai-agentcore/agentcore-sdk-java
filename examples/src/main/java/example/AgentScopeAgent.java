@@ -18,7 +18,7 @@ public final class AgentScopeAgent {
             // An Agent per request avoids sharing conversation state across unrelated users.
             try (var server = new AgentCoreServer(request -> Flux.using(
                     () -> ReActAgent.builder().name("assistant").model(model).toolkit(toolkit).maxIters(8).build(),
-                    agent -> AgentScopeEvents.from(agent.streamEvents(Json.text(request.messages().get(request.messages().size() - 1).get("content"), "user content"))),
+                    agent -> AgentScopeEvents.from(context -> agent.streamEvents(Json.text(request.messages().get(request.messages().size() - 1).get("content"), "user content"), context)),
                     ReActAgent::close)).start(8080)) {
                 server.await();
             }

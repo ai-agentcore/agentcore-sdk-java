@@ -33,7 +33,7 @@
 <dependency>
   <groupId>io.github.ai-agentcore</groupId>
   <artifactId>agentcore-sdk</artifactId>
-  <version>0.1.3</version>
+  <version>0.1.4</version>
 </dependency>
 ```
 
@@ -240,6 +240,24 @@ public class MemoryExample {
 AG-UI 可表达消息边界、工具调用和工具结果。OpenAI Chat Completions 按其标准表达文本和工具调用，不能完整表达 Agent 内部的多轮消息边界或中间工具结果。
 
 ## 使用提示
+
+`AgentCoreServer` 将入站 Header 绑定到 Reactor Context 中的 `io.agentcore.runtime.RequestContext`。
+`core.mcp()` 自动读取当前上下文的 `X-AgentCore-Accessor-WAT` 原始值，同一次入站请求内复用
+MCP Session，不同入站请求隔离，请求结束（包括失败或取消）后关闭 Session。已有网关 `Authorization`
+继续保留；直连 MCP 不会自动收到平台 WAT。不要把 Accessor JWT、WAT 或 Matrix ID 配成固定
+MCP Header。自行提供 HTTP 入口时，通过
+`contextWrite(context -> context.put(RequestContext.class, new RequestContext(trustedHeaders)))`
+绑定可信请求 Header；脱离 Reactor 调用链的任务需要显式传播上下文。
+Spring AI 的 `SpringAIEvents.stream` 自动传递工具执行上下文。LangChain4j 使用
+`LangChain4jEvents.from(parameters -> assistant.chat(input, parameters))`，其中方法的第二个参数
+为 `InvocationParameters`；AgentScope 使用 `AgentScopeEvents.from(context -> agent.streamEvents(input, context))`。
+自行执行框架工具循环时，用 `RequestContext.toolContext(reactorContext)` 填充 Spring AI
+`toolContext`、LangChain4j `InvocationParameters` 或 AgentScope `RuntimeContext`。
+`listTools(Map.of("X-Trace-ID", "..."))`、`callTool(name, args, headers)` 支持逐次传入业务
+Header；HTTP Header supplier 在每次发送请求时求值，不改变 MCP Session。
+身份、Authorization 和协议 Header 不可覆盖。手动管理 `RequestContext` 时，在请求结束后
+订阅 `context.closeAsync()` 释放 Session。
+WAT 兑换、到期恢复和工具权限校验由网关负责，SDK 不会自动重试工具调用。
 
 - 在应用生命周期内复用 `AgentCore` 及资源客户端，退出时调用 `close()` 或使用 try-with-resources。
 - 模型聊天调用使用 `completion()`，流式调用使用 `stream()`。OpenAI 协议的 Responses 调用使用 `responses()` / `responsesStream()`，支持情况取决于所选模型。

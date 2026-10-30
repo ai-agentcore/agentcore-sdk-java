@@ -11,6 +11,11 @@ import reactor.core.publisher.Flux;
 /** One TokenStream per subscription; intermediate assistant messages end before tools execute. */
 public final class LangChain4jEvents {
     private LangChain4jEvents() {}
+    /** Pass trusted invocation metadata through the framework's asynchronous tool callbacks. */
+    public static Flux<AgentEvent> from(java.util.function.Function<dev.langchain4j.invocation.InvocationParameters, TokenStream> source) {
+        return Flux.deferContextual(context -> from(() -> source.apply(dev.langchain4j.invocation.InvocationParameters.from(
+            io.agentcore.runtime.RequestContext.toolContext(context)))));
+    }
     public static Flux<AgentEvent> from(Supplier<TokenStream> source) {
         return from(source, response -> reactor.core.publisher.Mono.empty());
     }
