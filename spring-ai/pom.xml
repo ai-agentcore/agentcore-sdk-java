@@ -1,6 +1,6 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
-  <parent><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk-parent</artifactId><version>0.1.3</version></parent>
+  <parent><groupId>io.github.ai-agentcore</groupId><artifactId>agentcore-sdk-parent</artifactId><version>0.1.4</version></parent>
   <artifactId>agentcore-sdk-spring-ai</artifactId>
   <name>AgentCore SDK Spring AI Adapter</name>
   <dependencies>
