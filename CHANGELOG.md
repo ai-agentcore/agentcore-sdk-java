@@ -1,5 +1,12 @@
 # Release notes
 
+## Collaboration 0.1.1 — 2026-10-22
+
+- 新增房间附件下载与发送工具，按当前房间中的 Matrix Event ID 下载附件到工作区，并将本地文件或图片作为原生 Matrix 消息回复。
+- 内置 `room-files` Skill；文件解析和图片理解继续使用应用已有的工具，无需加入 Team 即可处理房间文件。
+- 支持取消下载时关闭输入流并清理临时文件；发送结果不确定时保留事务信息，避免盲目重传导致重复消息。
+- 依赖已发布的基础 SDK `0.1.3`，包含 Task Service 明文 HTTP/1.1 修复；本次不重新发布基础 SDK。
+
 ## 0.1.3 — 2026-10-19
 
 - 新增响应式 Agent 模版读取入口 `core.templates().get()`，按指定版本或 `latest` 标签加载 Workspace 中的模版。
