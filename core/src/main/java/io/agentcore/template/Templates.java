@@ -21,6 +21,7 @@ import reactor.core.scheduler.Schedulers;
 
 /** AgentSpec configuration only; graph construction and model choice remain application-owned. */
 public final class Templates implements AutoCloseable {
+    private final io.agentcore.internal.ResourceDefaults resourceDefaults = new io.agentcore.internal.ResourceDefaults();
     private final Supplier<Mono<ControlPlane>> controlPlane;
     private final HttpTransport http;
     private final Skills skills;
@@ -34,8 +35,17 @@ public final class Templates implements AutoCloseable {
         this.workspace = workspace != null ? workspace : System.getenv("AGENTCORE_SKILL_WORKSPACE_DIR") == null ? null
             : Path.of(System.getenv("AGENTCORE_SKILL_WORKSPACE_DIR"));
     }
+    public Mono<AgentTemplate> get() {
+        return get(null, null);
+    }
     public Mono<AgentTemplate> get(String name) { return get(name, null); }
     public Mono<AgentTemplate> get(String name, String version) {
+        return Mono.defer(() -> {
+            var selected = resourceDefaults.agentSpec(name, version);
+            return resolve(selected.name(), selected.version());
+        });
+    }
+    private Mono<AgentTemplate> resolve(String name, String version) {
         return Mono.defer(controlPlane).flatMap(cp -> {
             String path = "/agent-specs/" + ControlPlane.encode(component(name));
             Mono<String> selected = version != null ? Mono.just(component(version))

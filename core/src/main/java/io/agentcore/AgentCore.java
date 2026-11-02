@@ -26,6 +26,7 @@ import reactor.util.retry.Retry;
 
 /** Lazy runtime discovery; direct clients do not read agent.yaml or contact the control plane. */
 public final class AgentCore implements AutoCloseable {
+    private final io.agentcore.internal.ResourceDefaults resourceDefaults = new io.agentcore.internal.ResourceDefaults();
     private final HttpTransport http = new HttpTransport();
     private final io.agentcore.skill.Skills skills;
     private final Templates templates;
@@ -94,7 +95,22 @@ public final class AgentCore implements AutoCloseable {
     public static AgentCore auto() { return builder().build(); }
     public static Builder builder() { return new Builder(); }
     public Mono<ControlPlane> controlPlane() { return Mono.defer(() -> { checkOpen(); return controlPlane; }); }
+    public Mono<ModelClient> model() {
+        return model(null, null);
+    }
+    public Mono<List<MCPClient>> mcpsFromEnv() {
+        return Mono.defer(() -> {
+            checkOpen();
+            return Flux.fromIterable(resourceDefaults.mcpNames()).concatMap(this::mcp).collectList();
+        });
+    }
     public Mono<ModelClient> model(String connectionName, String modelName) {
+        return Mono.defer(() -> {
+            var selected = resourceDefaults.model(connectionName, modelName);
+            return resolveModel(selected.name(), selected.model());
+        });
+    }
+    private Mono<ModelClient> resolveModel(String connectionName, String modelName) {
         return controlPlane().flatMap(cp -> cp.list("ListModelConnections", "/model-connections",
             Map.of("name", connectionName, "searchType", "accurate")).flatMap(items -> {
                 var connection = ControlPlane.exact(items, "name", connectionName);
