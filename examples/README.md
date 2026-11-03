@@ -5,6 +5,7 @@
 | 示例 | 内容 |
 | --- | --- |
 | [CloudResources](src/main/java/example/CloudResources.java) | 托管 Model、MCP、Skill、Memory |
+| [EnvironmentResources](src/main/java/example/EnvironmentResources.java) | 通过环境变量选择默认模型、AgentSpec、多个 MCP 和 Skill |
 | [AgentTemplateExample](src/main/java/example/AgentTemplateExample.java) | 加载模版的 Prompt、Skill，接入独立配置的 LangChain4j 模型 |
 | [DirectResources](src/main/java/example/DirectResources.java) | 自有模型与 MCP |
 | [LangChainAgent](src/main/java/example/LangChainAgent.java) | LangChain4j Agent、MCP/Skill 工具、AG-UI/OpenAI 服务 |

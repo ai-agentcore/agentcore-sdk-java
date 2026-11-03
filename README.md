@@ -9,6 +9,7 @@
 | 你想做什么 | 入口 |
 | --- | --- |
 | 连接平台上的模型、MCP 和 Skill | [云端资源](#使用云端资源) |
+| 在部署时选择模型、模版、MCP 和 Skill | [环境变量配置](#通过环境变量选择资源) |
 | 使用自己的模型、MCP 或本地 Skill | [自定义资源](#使用自定义资源) |
 | 为 Agent 添加长期记忆 | [Memory](#使用-memory) |
 | 配置 MCP 凭证与固定 Header | [凭证与 Header](#凭证与-mcp-header) |
@@ -161,6 +162,46 @@ try (var core = AgentCore.auto()) {
 `instruction()` 返回模版主 Agent 的 Prompt 字符串。`loadSkills()` 按需加载随包 Skill 和引用的云端 Skill，返回现有 `Skill` 对象，可通过 `Skill.tools(...)` 接入各框架。模型由应用独立配置。
 
 `get(name)` 使用模版的 `latest` 标签；同一个模版对象成功加载 Skill 后会复用结果，不自动跟随引用标签变化。异步应用可以直接组合返回的 `Mono`。完整用法见 [AgentTemplateExample](examples/src/main/java/example/AgentTemplateExample.java)。
+
+## 通过环境变量选择资源
+
+部署时可通过进程环境变量配置一个默认模型、一个 Agent 模版（AgentSpec），以及多个 MCP 和 Skill，不必把资源名称写死在代码中。先在当前 Workspace 准备对应资源并授予应用访问权限。
+
+| 环境变量 | 内容 |
+| --- | --- |
+| `AGENTCORE_MODEL_CONNECTION_NAME` | 默认模型连接名称 |
+| `AGENTCORE_MODEL_NAME` | 默认连接下的模型名称，可选；省略时沿用连接的模型选择规则 |
+| `AGENTCORE_AGENT_SPEC_NAME` | 默认 AgentSpec 名称 |
+| `AGENTCORE_AGENT_SPEC_VERSION` | AgentSpec 版本，可选；省略时使用 `latest` 标签 |
+| `AGENTCORE_MCP_NAMES` | MCP 名称的 JSON 字符串数组 |
+| `AGENTCORE_SKILLS` | Skill 的 JSON 对象数组；每项包含 `name` 和可选的 `version`，省略版本时使用 `latest` 标签 |
+
+例如，将下列名称和版本替换为自己 Workspace 中的资源：
+
+```bash
+export AGENTCORE_MODEL_CONNECTION_NAME=test-mc
+export AGENTCORE_MODEL_NAME=qwen3.8-max
+export AGENTCORE_AGENT_SPEC_NAME=my-agent-spec
+export AGENTCORE_AGENT_SPEC_VERSION=1.0.0
+export AGENTCORE_MCP_NAMES='["test-mcp","another-mcp"]'
+export AGENTCORE_SKILLS='[{"name":"test-skill"},{"name":"another-skill","version":"1.0.0"}]'
+```
+
+```java
+try (var core = AgentCore.auto()) {
+    var model = core.model().block();
+    var mcps = core.mcpsFromEnv().block();
+    var skills = core.skills().fromEnv().block();
+    var template = core.templates().get().block();
+    var instruction = template.instruction();
+}
+```
+
+[完整示例](examples/src/main/java/example/EnvironmentResources.java)。示例在普通 Java 主线程使用 `block()`；响应式请求中请组合返回的 `Mono`，不要阻塞事件循环线程。
+
+显式传资源名时保持原有行为，不继承默认连接的模型名称或默认 AgentSpec 的版本；省略资源名时，也可显式传模型名称或版本覆盖对应默认值。MCP／Skill 未配置时批量入口返回空列表，配置为 `[]` 也表示不加载；非法 JSON 或列表项会在调用相应入口时报错。
+
+只需配置实际使用的资源。SDK 不自动加载这些资源，也不自动将 AgentSpec 内的 Skill 与环境变量 Skill 合并。同一个已初始化客户端不会随环境变量变化自动切换资源；修改后请重新创建客户端或重新部署。认证与访问权限的配置方式不变。
 
 ## 使用 Memory
 

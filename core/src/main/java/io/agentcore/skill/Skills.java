@@ -25,6 +25,7 @@ import reactor.core.scheduler.Schedulers;
 
 /** Each materialization owns its directory, never a shared mutable content cache. */
 public final class Skills implements AutoCloseable {
+    private final io.agentcore.internal.ResourceDefaults resourceDefaults = new io.agentcore.internal.ResourceDefaults();
     private final Supplier<Mono<ControlPlane>> controlPlane;
     private final HttpTransport http;
     private final Path workspace;
@@ -47,6 +48,10 @@ public final class Skills implements AutoCloseable {
                 return List.copyOf(result);
             }
         }).subscribeOn(Schedulers.boundedElastic());
+    }
+    public Mono<List<Skill>> fromEnv() {
+        return Mono.defer(() -> reactor.core.publisher.Flux.fromIterable(resourceDefaults.skills())
+            .concatMap(item -> load(item.name(), item.version())).collectList());
     }
     public Mono<Skill> load(String name) { return load(name, null); }
     public Mono<Skill> load(String name, String version) {
