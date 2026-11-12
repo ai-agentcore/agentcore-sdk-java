@@ -2,6 +2,13 @@ package io.agentcore.memory.plugin;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.agentcore.AgentCoreException;
+import io.agentcore.memory.ContextEvent;
+import io.agentcore.memory.ContextMemoryClient;
+import io.agentcore.memory.ContextMemoryModels;
+import io.agentcore.memory.ContextMemoryModels.MemoryType;
+import io.agentcore.memory.CreateEventsOutcomeUnknownException;
+import io.agentcore.memory.MemoryScope;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -23,7 +30,7 @@ import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
-/** Explicit event capture and recall. The gateway owns durable cloud delivery. */
+/** Explicit event capture and recall. The host owns durable delivery and reconciliation. */
 public final class MemoryPlugin {
   private static final ObjectMapper JSON = new ObjectMapper();
   private static final String REFERENCE =
@@ -36,6 +43,7 @@ public final class MemoryPlugin {
   private final Duration timeout;
   private final HttpClient http;
   private final EnvironmentPolicy environment;
+  private final ContextMemoryClient nativeClient;
 
   private record EnvironmentPolicy(boolean enabled, Map<String, Boolean> stores) {
     private EnvironmentPolicy {
@@ -49,6 +57,19 @@ public final class MemoryPlugin {
 
   public static MemoryPlugin fromEnvironment(
       String endpoint, Supplier<String> tokenProvider, Map<String, String> values) {
+    return new MemoryPlugin(
+        endpoint, tokenProvider, true, true, Duration.ofMillis(1500), environmentPolicy(values));
+  }
+
+  public static MemoryPlugin fromNative(ContextMemoryClient client) {
+    return fromNative(client, System.getenv());
+  }
+
+  public static MemoryPlugin fromNative(ContextMemoryClient client, Map<String, String> values) {
+    return new MemoryPlugin(client, environmentPolicy(values));
+  }
+
+  private static EnvironmentPolicy environmentPolicy(Map<String, String> values) {
     String enabled = values.getOrDefault("AGENTCORE_MEMORY_PLUGIN_ENABLED", "").trim();
     String entries = values.getOrDefault("AGENTCORE_MEMORY_STORE_NAMES", "").trim();
     var stores = new LinkedHashMap<String, Boolean>();
@@ -61,8 +82,18 @@ public final class MemoryPlugin {
         stores.put(name, parseBoolean(parts[1]));
       }
     }
-    var policy = new EnvironmentPolicy(!enabled.isEmpty() && parseBoolean(enabled), stores);
-    return new MemoryPlugin(endpoint, tokenProvider, true, true, Duration.ofMillis(1500), policy);
+    return new EnvironmentPolicy(!enabled.isEmpty() && parseBoolean(enabled), stores);
+  }
+
+  private MemoryPlugin(ContextMemoryClient client, EnvironmentPolicy environment) {
+    this.nativeClient = java.util.Objects.requireNonNull(client);
+    this.endpoint = null;
+    this.tokenProvider = null;
+    this.captureEnabled = true;
+    this.recallEnabled = true;
+    this.timeout = Duration.ofMillis(1500);
+    this.environment = environment;
+    this.http = null;
   }
 
   private static boolean parseBoolean(String value) {
@@ -120,6 +151,7 @@ public final class MemoryPlugin {
     this.recallEnabled = recallEnabled;
     this.timeout = timeout;
     this.environment = environment;
+    this.nativeClient = null;
     this.http =
         HttpClient.newBuilder()
             .connectTimeout(timeout)
@@ -130,7 +162,7 @@ public final class MemoryPlugin {
   public record Binding(String memoryStoreName, String userId, String agentId, String teamId) {
     public Binding {
       identifier(memoryStoreName);
-      identifier(userId);
+      if (userId != null) identifier(userId);
       identifier(agentId);
       if (teamId != null) identifier(teamId);
     }
@@ -142,7 +174,7 @@ public final class MemoryPlugin {
     private Map<String, Object> wire() {
       var body = new LinkedHashMap<String, Object>();
       body.put("memory_id", memoryStoreName);
-      body.put("user_id", userId);
+      if (userId != null) body.put("user_id", userId);
       body.put("agent_id", agentId);
       if (teamId != null) body.put("team_id", teamId);
       return body;
@@ -197,18 +229,33 @@ public final class MemoryPlugin {
     FAILED
   }
 
-  public record CaptureReceipt(String sourceId, CaptureState state, String eventId) {}
+  public record CaptureReceipt(
+      String sourceId,
+      CaptureState state,
+      String eventId,
+      String requestId,
+      ContextMemoryModels.EventReceipt nativeReceipt) {
+    public CaptureReceipt(String sourceId, CaptureState state, String eventId) {
+      this(sourceId, state, eventId, null, null);
+    }
+  }
 
   public enum RecallMode {
     SHARED,
     SESSION
   }
 
-  public record RecallOptions(RecallMode mode, int maxResults, int maxChars) {
+  public record RecallOptions(
+      RecallMode mode, int maxResults, int maxChars, List<MemoryType> types) {
     public RecallOptions {
       java.util.Objects.requireNonNull(mode);
       if (maxResults < 1 || maxResults > 10 || maxChars < 256 || maxChars > 16000)
         throw new IllegalArgumentException("invalid_recall_budget");
+      if (types != null) types = List.copyOf(types);
+    }
+
+    public RecallOptions(RecallMode mode, int maxResults, int maxChars) {
+      this(mode, maxResults, maxChars, null);
     }
 
     public static RecallOptions defaults() {
@@ -216,15 +263,27 @@ public final class MemoryPlugin {
     }
   }
 
-  public record RecalledMemory(String id, String text, List<String> sourceEventIds) {
+  public record RecalledMemory(
+      String id, String text, List<String> sourceEventIds, String type, String source) {
     public RecalledMemory {
       sourceEventIds = List.copyOf(sourceEventIds);
     }
+
+    public RecalledMemory(String id, String text, List<String> sourceEventIds) {
+      this(id, text, sourceEventIds, null, null);
+    }
   }
 
-  public record RecallResult(String context, List<RecalledMemory> memories) {
+  public record RecallResult(
+      String context,
+      List<RecalledMemory> memories,
+      ContextMemoryModels.ContextMemorySearchResult nativeResult) {
     public RecallResult {
       memories = List.copyOf(memories);
+    }
+
+    public RecallResult(String context, List<RecalledMemory> memories) {
+      this(context, memories, null);
     }
   }
 
@@ -234,7 +293,12 @@ public final class MemoryPlugin {
     private final String requestId;
 
     private MemoryPluginException(String code, boolean outcomeUnknown, String requestId) {
-      super(code);
+      this(code, outcomeUnknown, requestId, null);
+    }
+
+    private MemoryPluginException(
+        String code, boolean outcomeUnknown, String requestId, Throwable cause) {
+      super(code, cause);
       this.code = code;
       this.outcomeUnknown = outcomeUnknown;
       this.requestId = requestId;
@@ -254,6 +318,8 @@ public final class MemoryPlugin {
   }
 
   public Session session(Binding binding, String sessionId) {
+    if (nativeClient != null && !nativeClient.memoryStoreName().equals(binding.memoryStoreName()))
+      throw new IllegalArgumentException("native_memory_store_mismatch");
     return new Session(java.util.Objects.requireNonNull(binding), identifier(sessionId));
   }
 
@@ -279,6 +345,7 @@ public final class MemoryPlugin {
       if (records.isEmpty() || records.size() > 100)
         throw new IllegalArgumentException("invalid_capture_batch");
       var snapshot = List.copyOf(records);
+      if (nativeClient != null) return captureNative(snapshot);
       var ids = new HashSet<String>();
       var wire = new ArrayList<Map<String, Object>>();
       for (var record : snapshot) {
@@ -313,6 +380,41 @@ public final class MemoryPlugin {
               });
     }
 
+    private MemoryScope scope(boolean includeSession) {
+      return new MemoryScope(
+          binding.userId(), binding.teamId(), binding.agentId(), includeSession ? sessionId : null);
+    }
+
+    private CompletableFuture<List<CaptureReceipt>> captureNative(List<SourceRecord> records) {
+      var ids = new HashSet<String>();
+      var events = new ArrayList<ContextEvent>();
+      for (var record : records) {
+        if (!ids.add(record.sourceId())) throw new IllegalArgumentException("duplicate_source_id");
+        var event = record.event();
+        events.add(ContextEvent.fromSource(event.type(), event.timestamp(), event.data()));
+      }
+      return nativeClient
+          .createEvents(scope(true), events, new ContextMemoryModels.CallOptions(timeout))
+          .map(
+              result ->
+                  result.results().stream()
+                      .map(
+                          receipt ->
+                              new CaptureReceipt(
+                                  records.get(receipt.inputIndex()).sourceId(),
+                                  switch (receipt.status()) {
+                                    case "STORED" -> CaptureState.STORED;
+                                    case "FAILED", "REJECTED" -> CaptureState.FAILED;
+                                    default -> CaptureState.UNKNOWN;
+                                  },
+                                  receipt.eventId(),
+                                  result.requestId(),
+                                  receipt))
+                      .toList())
+          .onErrorMap(MemoryPlugin::nativeFailure)
+          .toFuture();
+    }
+
     public CompletableFuture<RecallResult> recall(String query) {
       return recall(query, RecallOptions.defaults());
     }
@@ -322,6 +424,40 @@ public final class MemoryPlugin {
       java.util.Objects.requireNonNull(options);
       if (!enabledFor(binding.memoryStoreName(), false) || query.isBlank())
         return CompletableFuture.completedFuture(new RecallResult("", List.of()));
+      if (nativeClient != null) {
+        var search =
+            new ContextMemoryModels.SearchOptions(
+                scope(options.mode() == RecallMode.SESSION),
+                options.types(),
+                options.maxResults(),
+                null,
+                null,
+                null,
+                null);
+        return nativeClient
+            .searchMemories(query, search, new ContextMemoryModels.CallOptions(timeout))
+            .map(
+                result ->
+                    renderRecall(
+                        result.memories().stream()
+                            .map(
+                                hit ->
+                                    new RecalledMemory(
+                                        hit.memory().memoryId(),
+                                        hit.memory().content().text(),
+                                        hit.memory().sourceEventIds() == null
+                                            ? List.of()
+                                            : hit.memory().sourceEventIds(),
+                                        hit.memory().type() == null
+                                            ? null
+                                            : hit.memory().type().value(),
+                                        hit.memory().source()))
+                            .toList(),
+                        options,
+                        result))
+            .onErrorMap(MemoryPlugin::nativeFailure)
+            .toFuture();
+      }
       var body = body();
       body.put("query", query);
       body.put("limit", options.maxResults());
@@ -336,9 +472,10 @@ public final class MemoryPlugin {
       var candidates = new ArrayList<RecalledMemory>();
       for (var row : rows) {
         var scope = row.path("scope");
-        if (!binding.userId().equals(scope.path("userId").textValue())
+        if ((binding.userId() != null && !binding.userId().equals(scope.path("userId").textValue()))
             || !binding.agentId().equals(scope.path("agentId").textValue())
-            || !java.util.Objects.equals(binding.teamId(), scope.path("teamId").textValue())
+            || (binding.teamId() != null
+                && !binding.teamId().equals(scope.path("teamId").textValue()))
             || (scope.hasNonNull("teamId") && !nonblank(scope.get("teamId")))
             || (options.mode() == RecallMode.SESSION
                 && !sessionId.equals(scope.path("sessionId").textValue())))
@@ -357,6 +494,13 @@ public final class MemoryPlugin {
         candidates.add(
             new RecalledMemory(row.get("id").textValue(), row.get("text").textValue(), sources));
       }
+      return renderRecall(candidates, options, null);
+    }
+
+    private RecallResult renderRecall(
+        List<RecalledMemory> candidates,
+        RecallOptions options,
+        ContextMemoryModels.ContextMemorySearchResult nativeResult) {
       var selected = new ArrayList<RecalledMemory>();
       var rendered = new ArrayList<Map<String, String>>();
       var seen = new HashSet<String>();
@@ -364,20 +508,37 @@ public final class MemoryPlugin {
         if (!seen.add(memory.id()) || selected.size() >= options.maxResults()) continue;
         String text = take(memory.text(), options.maxChars());
         while (!text.isEmpty()) {
-          var candidate = Map.of("id", memory.id(), "text", text);
+          var candidate = new LinkedHashMap<String, String>();
+          candidate.put("id", memory.id());
+          candidate.put("text", text);
+          if (memory.type() != null) candidate.put("type", memory.type());
+          if (memory.source() != null) candidate.put("source", memory.source());
           var next = new ArrayList<>(rendered);
           next.add(candidate);
           int size = chars(REFERENCE + json(next));
           if (size <= options.maxChars()) {
             rendered.add(candidate);
-            selected.add(new RecalledMemory(memory.id(), text, memory.sourceEventIds()));
+            selected.add(
+                new RecalledMemory(
+                    memory.id(), text, memory.sourceEventIds(), memory.type(), memory.source()));
             break;
           }
           text = take(text, Math.max(0, chars(text) - (size - options.maxChars())));
         }
       }
-      return new RecallResult(rendered.isEmpty() ? "" : REFERENCE + json(rendered), selected);
+      return new RecallResult(
+          rendered.isEmpty() ? "" : REFERENCE + json(rendered), selected, nativeResult);
     }
+  }
+
+  private static Throwable nativeFailure(Throwable error) {
+    if (error instanceof AgentCoreException api)
+      return new MemoryPluginException(
+          api.serviceCode() == null ? "native_request_failed" : api.serviceCode(),
+          error instanceof CreateEventsOutcomeUnknownException,
+          api.requestId(),
+          error);
+    return error;
   }
 
   private CompletableFuture<JsonNode> call(String operation, Map<String, Object> body) {

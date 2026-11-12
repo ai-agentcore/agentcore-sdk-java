@@ -1,9 +1,14 @@
+import io.agentcore.AgentCore;
 import io.agentcore.memory.plugin.MemoryPlugin;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /** Explicit lifecycle wiring; callers supply authenticated identity and durable source records. */
 public final class MemoryPluginExample {
+  public static MemoryPlugin nativePlugin(AgentCore sdk, String storeName) {
+    return MemoryPlugin.fromNative(sdk.contextMemory(storeName));
+  }
+
   public record TurnResult(
       MemoryPlugin.RecallResult recalled, List<MemoryPlugin.CaptureReceipt> receipts) {}
 
