@@ -1,5 +1,11 @@
 # Release notes
 
+## SDK 0.1.6 (unreleased)
+
+- Add native Context Memory CreateEvents, paginated ListEvents and rich SearchMemories using context credentials, independent scope dimensions and explicit uncertain-write errors.
+- Add the optional plugin's native adapter while preserving gateway constructors and existing MemoryStore APIs.
+- Require aligned core 0.1.6 from the plugin because released 0.1.5 does not export the native client. Plugin and collaboration retain their independent versions. No release is published by this change.
+
 ## SDK 0.1.5 — 2026-11-03
 
 - 支持通过环境变量选择默认模型和 AgentSpec，以及批量加载多个 MCP 和带独立版本的 Skill。

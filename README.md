@@ -12,6 +12,7 @@
 | 在部署时选择模型、模版、MCP 和 Skill | [环境变量配置](#通过环境变量选择资源) |
 | 使用自己的模型、MCP 或本地 Skill | [自定义资源](#使用自定义资源) |
 | 为 Agent 添加长期记忆 | [Memory](#使用-memory) |
+| 为自有 harness 显式采集事件和召回 | [原生 Context Memory](docs/context-memory.md) · [可选插件](memory-plugin/README.md) |
 | 配置 MCP 凭证与固定 Header | [凭证与 Header](#凭证与-mcp-header) |
 | 接入已有 Agent 框架 | [框架集成](#框架集成) |
 | 将 Agent 发布为 HTTP 服务 | [服务协议](#提供-agent-服务) |
@@ -30,11 +31,13 @@
 
 需要 JDK 17+、Maven 3.9+。SDK 发布在 Maven Central，无需自行构建或添加额外仓库。在应用中添加所需模块，例如基础 SDK：
 
+本分支准备 `0.1.6`，尚未发布。原生 Context API 从该版本提供；已有 `0.1.5` 不包含这些 API。
+
 ```xml
 <dependency>
   <groupId>io.github.ai-agentcore</groupId>
   <artifactId>agentcore-sdk</artifactId>
-  <version>0.1.5</version>
+  <version>0.1.6</version>
 </dependency>
 ```
 

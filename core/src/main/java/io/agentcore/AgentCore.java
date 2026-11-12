@@ -5,6 +5,7 @@ import io.agentcore.auth.ControllerCredentials;
 import io.agentcore.auth.CredentialProvider;
 import io.agentcore.controlplane.ControlPlane;
 import io.agentcore.memory.MemoryStore;
+import io.agentcore.memory.ContextMemoryClient;
 import io.agentcore.mcp.MCPClient;
 import io.agentcore.model.ModelClient;
 import io.agentcore.runtime.AgentConfig;
@@ -34,8 +35,10 @@ public final class AgentCore implements AutoCloseable {
     private final Mono<AgentConfig> config;
     private final Mono<ControllerCredentials> controller;
     private final Mono<ControlPlane> controlPlane;
+    private final Mono<ContextConnection> contextConnection;
     private final io.agentcore.runtime.BootstrapRuntime bootstrap;
     private boolean closed;
+    private record ContextConnection(String workspaceId, String regionId, String endpoint, CredentialProvider credentials) {}
 
     private AgentCore(Builder options) {
         skills = new io.agentcore.skill.Skills(this::controlPlane, http, options.skillWorkspaceDir);
@@ -90,6 +93,15 @@ public final class AgentCore implements AutoCloseable {
                     explicitControlEndpoint != null ? explicitControlEndpoint : env.get("AGENTCORE_CONTROL_ENDPOINT") == null
                         ? controlEndpoint : AgentConfig.httpUrl(env.get("AGENTCORE_CONTROL_ENDPOINT")), provider));
             });
+        }).cacheInvalidateIf(value -> false);
+        CredentialProvider contextCredentials = credential != null ? purpose -> Mono.just(credential)
+            : purpose -> controller.flatMap(value -> value.get(purpose));
+        contextConnection = Mono.defer(() -> {
+            if (workspaceId != null) return Mono.just(new ContextConnection(workspaceId, regionId,
+                memoryEndpoint(System.getenv()), contextCredentials));
+            return config.flatMap(value -> bootstrap != null
+                ? Mono.just(new ContextConnection(value.workspaceId(), value.regionId(), memoryEndpoint(System.getenv()), contextCredentials))
+                : environment.map(env -> new ContextConnection(value.workspaceId(), value.regionId(), memoryEndpoint(env), contextCredentials)));
         }).cacheInvalidateIf(value -> false);
     }
     public static AgentCore auto() { return builder().build(); }
@@ -170,6 +182,19 @@ public final class AgentCore implements AutoCloseable {
         return track(MCPClient.stdio(command, args, environment));
     }
     public MemoryStore memory(String name) { checkOpen(); return new MemoryStore(name, this::controlPlane); }
+    public ContextMemoryClient contextMemory(String name) { return contextMemory(name, null); }
+    public ContextMemoryClient contextMemory(String name, URI endpoint) {
+        checkOpen();
+        String store = Json.text(name, "memoryStoreName");
+        return ContextMemoryClient.deferred(store, () -> {
+            checkOpen();
+            return contextConnection.map(value -> new ContextMemoryClient.Options(value.workspaceId(), value.regionId(), store,
+                endpoint != null ? endpoint : value.endpoint() == null ? null : URI.create(value.endpoint()), value.credentials()));
+        });
+    }
+    private static String memoryEndpoint(Map<String, String> environment) {
+        return environment.get("AGENTCORE_MEMORY_ENDPOINT");
+    }
     public io.agentcore.skill.Skills skills() { checkOpen(); return skills; }
     public Templates templates() { checkOpen(); return templates; }
     public io.agentcore.auth.BoundCredentials credentials() { checkOpen(); return new io.agentcore.auth.BoundCredentials(this::controlPlane, () -> controller); }
