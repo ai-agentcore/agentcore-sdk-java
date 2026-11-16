@@ -89,16 +89,22 @@ public final class PopRequest {
           data == null ? null : text(data.getOrDefault("Message", data.get("message")));
       var failure = new AgentCoreException(action, status, id, error.getCode(), message, error);
       log.warn(
-          "agentcore.pop.failed operation={} host={} status={} code={} requestId={}",
+          "agentcore.pop.failed operation={} host={} status={} code={} requestId={} message={}",
           action,
           client._endpoint,
           status,
           error.getCode(),
-          id);
+          id,
+          failure.serviceMessage());
       throw failure;
     } catch (AgentCoreException error) {
       throw error;
     } catch (Exception error) {
+      log.warn(
+          "agentcore.pop.failed operation={} host={} error_type={}",
+          action,
+          client._endpoint,
+          error.getClass().getSimpleName());
       throw new AgentCoreException(action, null, null, null, error);
     }
   }
