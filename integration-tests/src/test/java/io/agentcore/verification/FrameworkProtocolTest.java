@@ -63,10 +63,16 @@ class FrameworkProtocolTest {
         });
         server.createContext("/workspaces", exchange -> {
             String form = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-            memoryRequests.add(Json.read(java.net.URLDecoder.decode(form.substring(5), StandardCharsets.UTF_8)));
-            String response = exchange.getRequestURI().getPath().endsWith("/search")
-                ? "{\"success\":true,\"data\":{\"memories\":[{\"memory\":{\"content\":{\"text\":\"The user prefers green.\"}}}]}}"
-                : "{\"success\":true,\"data\":{\"taskId\":\"task-1\"}}";
+            var body = Json.read(java.net.URLDecoder.decode(form.substring(5), StandardCharsets.UTF_8));
+            memoryRequests.add(body);
+            String response;
+            if (exchange.getRequestURI().getPath().endsWith("/search")) {
+                response = Json.write(Map.of("success", true, "data", Map.of("memories", List.of(Map.of(
+                    "memory", Map.of("memoryId", "m1", "content", Map.of("text", "The user prefers green."),
+                        "scope", body.get("scope")), "score", 1, "similarity", 1)))));
+            } else if (exchange.getRequestURI().getPath().endsWith("/events")) {
+                response = "{\"success\":true,\"data\":{\"results\":[{\"inputIndex\":0,\"status\":\"STORED\",\"eventId\":\"e1\"},{\"inputIndex\":1,\"status\":\"STORED\",\"eventId\":\"e2\"}]}}";
+            } else response = "{\"success\":true,\"data\":{\"taskId\":\"task-1\"}}";
             byte[] bytes = response.getBytes(StandardCharsets.UTF_8); exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, bytes.length); exchange.getResponseBody().write(bytes); exchange.close();
         });
@@ -192,44 +198,65 @@ class FrameworkProtocolTest {
             new io.agentcore.memory.MemoryScope("user-one", "agent-one", null),
             new io.agentcore.memory.MemoryScope("user-one", "agent-one", "session-one"), 3);
     }
-    @Test void springAutomaticWriteBackWrapsWholeToolLoop() {
+    private io.agentcore.memory.FrameworkMemory frameworkMemory(boolean contextMemory) {
+        if (!contextMemory) return splitMemory();
+        var client = io.agentcore.memory.ContextMemoryClient.fromCredentials(new io.agentcore.memory.ContextMemoryClient.Options(
+            "workspace", "region", "store", source.settings().baseUrl().resolve("/"),
+            purpose -> Mono.just(new io.agentcore.auth.AccessKeyCredential("test-ak", "test-sk"))));
+        return new io.agentcore.memory.ContextMemoryBinding(client, splitMemory().readScope(), splitMemory().writeScope(), 3);
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void springAutomaticWriteBackWrapsWholeToolLoop(boolean contextMemory) {
         var client = org.springframework.ai.chat.client.ChatClient.builder(AgentCoreSpringAI.model(source))
-            .defaultAdvisors(new io.agentcore.springai.MemoryAdvisor(splitMemory(), true),
+            .defaultAdvisors(new io.agentcore.springai.MemoryAdvisor(frameworkMemory(contextMemory), true),
                 org.springframework.ai.chat.client.advisor.ToolCallingAdvisor.builder().build()).build();
         client.prompt().user("Use echo").toolCallbacks(AgentCoreSpringAI.tool(tool)).stream().chatClientResponse()
             .collectList().block(Duration.ofSeconds(10));
-        assertEquals(1, executed.get()); assertMemoryTurn("Use echo");
+        assertEquals(1, executed.get()); assertMemoryTurn("Use echo", contextMemory);
     }
-    @Test void langchainAutomaticWriteBackKeepsFinalAnswerOnly() {
-        var memory = new io.agentcore.langchain4j.MemoryAdapter(splitMemory(), true);
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void langchainAutomaticWriteBackKeepsFinalAnswerOnly(boolean contextMemory) {
+        var memory = new io.agentcore.langchain4j.MemoryAdapter(frameworkMemory(contextMemory), true);
         var assistant = dev.langchain4j.service.AiServices.builder(Assistant.class)
             .streamingChatModel(AgentCoreLangChain4j.streamingModel(source)).tools(AgentCoreLangChain4j.tools(List.of(tool)))
             .contentRetriever(memory.retriever()).build();
         assertTurn(memory.stream("Use echo", () -> assistant.chat("Use echo")).collectList().block(Duration.ofSeconds(10)));
-        assertMemoryTurn("Use echo");
+        assertMemoryTurn("Use echo", contextMemory);
     }
-    @Test void agentscopeMiddlewareWritesOnceAfterFinalAnswer() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void agentscopeMiddlewareWritesOnceAfterFinalAnswer(boolean contextMemory) {
         var toolkit = new io.agentscope.core.tool.Toolkit(); toolkit.registerAgentTool(AgentCoreAgentScope.tool(tool));
         try (var agent = io.agentscope.core.ReActAgent.builder().name("memory-agent").model(AgentCoreAgentScope.model(source))
-                .toolkit(toolkit).middleware(new io.agentcore.agentscope.MemoryMiddleware(splitMemory(), true)).maxIters(3).build()) {
+                .toolkit(toolkit).middleware(new io.agentcore.agentscope.MemoryMiddleware(frameworkMemory(contextMemory), true)).maxIters(3).build()) {
             assertTurn(AgentScopeEvents.from(agent.streamEvents("Use echo")).collectList().block(Duration.ofSeconds(10)));
         }
-        assertMemoryTurn("Use echo");
+        assertMemoryTurn("Use echo", contextMemory);
         assertTrue(Json.write(requests.get(0)).contains("The user prefers green."));
     }
-    private void assertMemoryTurn(String input) {
+    private void assertMemoryTurn(String input, boolean contextMemory) {
         assertEquals(2, memoryRequests.size(), () -> "Expected one recall and one write: " + memoryRequests);
         assertFalse(Json.object(memoryRequests.get(0).get("scope")).containsKey("sessionId"));
         assertEquals("session-one", Json.object(memoryRequests.get(1).get("scope")).get("sessionId"));
+        if (contextMemory) {
+            var events = (List<?>) memoryRequests.get(1).get("events");
+            assertEquals(2, events.size());
+            assertEquals(Map.of("role", "user", "content", List.of(Map.of("type", "text", "text", input))), Json.object(events.get(0)).get("data"));
+            assertEquals(Map.of("role", "assistant", "content", List.of(Map.of("type", "text", "text", "Final answer."))), Json.object(events.get(1)).get("data"));
+            assertFalse(memoryRequests.get(1).containsKey("messages"));
+            return;
+        }
         assertEquals(false, memoryRequests.get(1).get("sync"));
         assertEquals(List.of(Map.of("role", "user", "content", input), Map.of("role", "assistant", "content", "Final answer.")),
             memoryRequests.get(1).get("messages"));
     }
     interface SyncAssistant { dev.langchain4j.service.Result<String> chat(String input); }
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"spring", "langchain4j", "agentscope"})
-    void automaticWriteBackAlsoWorksForNonStreamingCalls(String framework) {
-        var memory = splitMemory();
+    @org.junit.jupiter.params.provider.CsvSource({"spring,false", "spring,true", "langchain4j,false", "langchain4j,true", "agentscope,false", "agentscope,true"})
+    void automaticWriteBackAlsoWorksForNonStreamingCalls(String framework, boolean contextMemory) {
+        var memory = frameworkMemory(contextMemory);
         if (framework.equals("spring")) {
             var client = org.springframework.ai.chat.client.ChatClient.builder(AgentCoreSpringAI.model(source))
                 .defaultAdvisors(new io.agentcore.springai.MemoryAdvisor(memory, true)).build();
@@ -247,7 +274,7 @@ class FrameworkProtocolTest {
                 assertEquals("Final answer.", agent.call("current question").block(Duration.ofSeconds(10)).getTextContent());
             }
         }
-        assertMemoryTurn("current question");
+        assertMemoryTurn("current question", contextMemory);
     }
     @Test void readOnlyMemoryCannotEnableWriteBack() {
         var readOnly = new io.agentcore.memory.MemoryContext(splitMemory().store(), splitMemory().readScope(), null, 3);
@@ -257,35 +284,42 @@ class FrameworkProtocolTest {
         assertTrue(memoryRequests.isEmpty());
     }
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"spring", "langchain4j", "agentscope"})
-    void automaticMemoryDoesNotWriteAfterFailureOrCancellation(String framework) {
+    @org.junit.jupiter.params.provider.CsvSource({"spring,false", "spring,true", "langchain4j,false", "langchain4j,true", "agentscope,false", "agentscope,true"})
+    void automaticMemoryDoesNotWriteAfterFailureOrCancellation(String framework, boolean contextMemory) {
         failModel.set(true);
-        assertThrows(RuntimeException.class, () -> memoryInvocation(framework, splitMemory(), "failed").collectList().block(Duration.ofSeconds(10)));
+        assertThrows(RuntimeException.class, () -> memoryInvocation(framework, frameworkMemory(contextMemory), "failed").collectList().block(Duration.ofSeconds(10)));
         assertEquals(1, memoryRequests.size()); assertTrue(memoryRequests.get(0).containsKey("query"));
         failModel.set(false); memoryRequests.clear();
-        assertNotNull(memoryInvocation(framework, splitMemory(), "cancelled").next().block(Duration.ofSeconds(10)));
+        assertNotNull(memoryInvocation(framework, frameworkMemory(contextMemory), "cancelled").next().block(Duration.ofSeconds(10)));
         assertEquals(1, memoryRequests.size()); assertTrue(memoryRequests.get(0).containsKey("query"));
     }
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"spring", "langchain4j", "agentscope"})
-    void concurrentMemoryTurnsDoNotMixUserScopes(String framework) {
+    @org.junit.jupiter.params.provider.CsvSource({"spring,false", "spring,true", "langchain4j,false", "langchain4j,true", "agentscope,false", "agentscope,true"})
+    void concurrentMemoryTurnsDoNotMixUserScopes(String framework, boolean contextMemory) {
         var store = splitMemory().store();
         reactor.core.publisher.Flux.range(0, 3).flatMap(i -> {
-            var context = new io.agentcore.memory.MemoryContext(store, new io.agentcore.memory.MemoryScope("user-" + i, "agent", null),
+            io.agentcore.memory.FrameworkMemory context = new io.agentcore.memory.MemoryContext(store, new io.agentcore.memory.MemoryScope("user-" + i, "agent", null),
+                new io.agentcore.memory.MemoryScope("user-" + i, "agent", "session-" + i), 3);
+            if (contextMemory) context = new io.agentcore.memory.ContextMemoryBinding(
+                ((io.agentcore.memory.ContextMemoryBinding) frameworkMemory(true)).client(),
+                new io.agentcore.memory.MemoryScope("user-" + i, "agent", null),
                 new io.agentcore.memory.MemoryScope("user-" + i, "agent", "session-" + i), 3);
             return memoryInvocation(framework, context, "input-" + i).collectList();
         }, 3).collectList().block(Duration.ofSeconds(15));
         assertEquals(6, memoryRequests.size());
-        var writes = memoryRequests.stream().filter(request -> request.containsKey("messages")).toList();
+        var writes = memoryRequests.stream().filter(request -> request.containsKey(contextMemory ? "events" : "messages")).toList();
         assertEquals(3, writes.size());
         for (var write : writes) {
             String user = (String) Json.object(write.get("scope")).get("userId");
             String index = user.substring("user-".length());
             assertEquals("session-" + index, Json.object(write.get("scope")).get("sessionId"));
-            assertEquals("input-" + index, Json.object(((List<?>) write.get("messages")).get(0)).get("content"));
+            if (contextMemory) {
+                var data = Json.object(Json.object(((List<?>) write.get("events")).get(0)).get("data"));
+                assertEquals("input-" + index, Json.object(((List<?>) data.get("content")).get(0)).get("text"));
+            } else assertEquals("input-" + index, Json.object(((List<?>) write.get("messages")).get(0)).get("content"));
         }
     }
-    private reactor.core.publisher.Flux<?> memoryInvocation(String framework, io.agentcore.memory.MemoryContext memory, String input) {
+    private reactor.core.publisher.Flux<?> memoryInvocation(String framework, io.agentcore.memory.FrameworkMemory memory, String input) {
         if (framework.equals("spring")) return org.springframework.ai.chat.client.ChatClient.builder(AgentCoreSpringAI.model(source))
             .defaultAdvisors(new io.agentcore.springai.MemoryAdvisor(memory, true)).build().prompt().user(input).stream().chatClientResponse();
         if (framework.equals("langchain4j")) {

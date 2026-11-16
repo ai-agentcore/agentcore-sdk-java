@@ -5,7 +5,7 @@ import java.util.Map;
 import reactor.core.publisher.Mono;
 
 /** Bind identities in application code, not in model-visible tool arguments. */
-public record MemoryContext(MemoryStore store, MemoryScope readScope, MemoryScope writeScope, int topK) {
+public record MemoryContext(MemoryStore store, MemoryScope readScope, MemoryScope writeScope, int topK) implements FrameworkMemory {
     public MemoryContext(MemoryStore store, MemoryScope scope, int topK) { this(store, scope, scope, topK); }
     public MemoryContext {
         if (readScope == null || readScope.toMap().isEmpty()) throw new IllegalArgumentException("Framework memory requires an explicit read scope");

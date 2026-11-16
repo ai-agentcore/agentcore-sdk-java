@@ -5,6 +5,7 @@ import dev.langchain4j.service.Result;
 import dev.langchain4j.service.TokenStream;
 import io.agentcore.event.AgentEvent;
 import io.agentcore.memory.MemoryContext;
+import io.agentcore.memory.FrameworkMemory;
 import java.util.function.Supplier;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -12,10 +13,12 @@ import reactor.core.scheduler.Schedulers;
 
 /** Registers recall with AiServices; wraps the whole invocation, not each model/tool iteration. */
 public final class MemoryAdapter {
-    private final MemoryContext memory;
+    private final FrameworkMemory memory;
     private final boolean writeBack;
     public MemoryAdapter(MemoryContext memory) { this(memory, false); }
-    public MemoryAdapter(MemoryContext memory, boolean writeBack) {
+    public MemoryAdapter(MemoryContext memory, boolean writeBack) { this((FrameworkMemory) memory, writeBack); }
+    public MemoryAdapter(FrameworkMemory memory) { this(memory, false); }
+    public MemoryAdapter(FrameworkMemory memory, boolean writeBack) {
         this.memory = memory; this.writeBack = writeBack;
         if (writeBack) memory.requireWriteScope();
     }
