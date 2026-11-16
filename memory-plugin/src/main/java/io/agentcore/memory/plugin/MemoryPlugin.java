@@ -506,24 +506,28 @@ public final class MemoryPlugin {
       var seen = new HashSet<String>();
       for (var memory : candidates) {
         if (!seen.add(memory.id()) || selected.size() >= options.maxResults()) continue;
-        String text = take(memory.text(), options.maxChars());
-        while (!text.isEmpty()) {
-          var candidate = new LinkedHashMap<String, String>();
-          candidate.put("id", memory.id());
+        var candidate = new LinkedHashMap<String, String>();
+        candidate.put("id", memory.id());
+        candidate.put("text", "");
+        if (memory.type() != null) candidate.put("type", memory.type());
+        if (memory.source() != null) candidate.put("source", memory.source());
+        var next = new ArrayList<>(rendered);
+        next.add(candidate);
+        int low = 0;
+        int high = Math.min(chars(memory.text()), options.maxChars());
+        while (low < high) {
+          int middle = low + (high - low + 1) / 2;
+          candidate.put("text", take(memory.text(), middle));
+          if (chars(REFERENCE + json(next)) <= options.maxChars()) low = middle;
+          else high = middle - 1;
+        }
+        if (low > 0) {
+          String text = take(memory.text(), low);
           candidate.put("text", text);
-          if (memory.type() != null) candidate.put("type", memory.type());
-          if (memory.source() != null) candidate.put("source", memory.source());
-          var next = new ArrayList<>(rendered);
-          next.add(candidate);
-          int size = chars(REFERENCE + json(next));
-          if (size <= options.maxChars()) {
-            rendered.add(candidate);
-            selected.add(
-                new RecalledMemory(
-                    memory.id(), text, memory.sourceEventIds(), memory.type(), memory.source()));
-            break;
-          }
-          text = take(text, Math.max(0, chars(text) - (size - options.maxChars())));
+          rendered.add(candidate);
+          selected.add(
+              new RecalledMemory(
+                  memory.id(), text, memory.sourceEventIds(), memory.type(), memory.source()));
         }
       }
       return new RecallResult(
