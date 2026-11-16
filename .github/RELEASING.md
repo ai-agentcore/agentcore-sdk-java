@@ -2,15 +2,16 @@
 
 All modules use the Maven group `io.github.ai-agentcore`.
 
-The SDK and collaboration are separate release units:
+The SDK, collaboration, and Memory plugin are separate release units:
 
 | Package | Release tag | Published artifacts |
 | --- | --- | --- |
 | SDK | `sdk-v0.1.0` | Parent POM, core, server, Spring AI, LangChain4j and AgentScope |
 | Collaboration | `collaboration-v0.1.0` | `agentcore-collaboration` only |
+| Memory plugin | `memory-plugin-v0.1.0` | `agentcore-memory-plugin` only |
 
-Installing the SDK does not install collaboration. Collaboration depends on a
-compatible SDK version, but its own version can advance independently.
+Installing the SDK does not install collaboration or the Memory plugin. Both
+packages depend on a compatible SDK version, but their versions advance independently.
 
 CI verifies the entire repository. Publishing verifies only the selected release
 unit. Examples and integration tests are never published. The old combined `v*`
@@ -33,7 +34,7 @@ supported keyserver. Never commit credentials or private keys.
 Enable SNAPSHOTs for the namespace in Central Portal. Set the selected package's
 version to a development version, for example `0.1.1-SNAPSHOT`, following the
 version rules below. Then run **Publish packages** manually from `main` in GitHub
-Actions and select `sdk` or `collaboration` in the `package` input.
+Actions and select `sdk`, `collaboration`, or `memory-plugin` in the `package` input.
 No Git tag is needed. Snapshots are publicly downloadable, mutable, and subject to
 the repository's retention policy; they do not undergo release validation.
 
@@ -58,11 +59,11 @@ Use the normal artifact coordinates with the published SNAPSHOT version.
 
 Update the root POM version, SDK module parent versions, and the examples and
 integration-tests parent versions. Update public documentation examples to match.
-Do not automatically change collaboration's version, parent version or SDK
-dependency when releasing the SDK.
+Keep collaboration's and the Memory plugin's project versions, parent versions,
+and SDK dependencies unchanged when releasing the SDK.
 
 Commit and push a matching tag, for example `sdk-v0.1.0`. This release excludes
-collaboration and does not build or upload its JAR.
+collaboration and the Memory plugin and does not build or upload their JARs.
 
 ### Collaboration
 
@@ -86,6 +87,19 @@ collaboration dependency differs from the current SDK version, Maven resolves th
 pinned release instead. This also checks compatibility with the declared SDK
 baseline rather than silently testing only against unreleased SDK code.
 
+### Memory plugin
+
+Update the explicit project version in `memory-plugin/pom.xml`. Leave the root
+SDK version unchanged. Keep the plugin's parent version pinned to a compatible,
+already-published SDK release. Its `agentcore-sdk` dependency uses that parent
+version, so update the parent only when the plugin requires a newer SDK.
+
+Commit and push a matching tag, for example `memory-plugin-v0.1.0`. The workflow
+builds from `memory-plugin/pom.xml` and uploads only `agentcore-memory-plugin`.
+It does not use `-am`, rebuild the SDK, or republish the parent POM. Before the
+first plugin release, publish SDK `0.1.6` and confirm that its parent POM and
+`agentcore-sdk` artifact are downloadable from Maven Central.
+
 ### Central validation
 
 The workflow uploads signed artifacts to Central Portal for validation. It does
@@ -95,14 +109,17 @@ publish it in Central Portal. Published release versions cannot be overwritten.
 For local packaging checks without signing or uploading:
 
 ```bash
-# SDK: parent plus five JARs, no collaboration artifacts.
-mvn -B -ntp -Ppublish -Dgpg.skip -pl '!collaboration,!integration-tests,!examples' verify
+# SDK: parent plus five JARs, no collaboration or Memory plugin artifacts.
+mvn -B -ntp -Ppublish -Dgpg.skip -pl '!collaboration,!memory-plugin,!integration-tests,!examples' verify
 
 # Collaboration only; requires its declared SDK dependency to be available.
 mvn -B -ntp -f collaboration/pom.xml -Ppublish -Dgpg.skip verify
+
+# Memory plugin only; requires its declared SDK dependency to be available.
+mvn -B -ntp -f memory-plugin/pom.xml -Ppublish -Dgpg.skip verify
 ```
 
 For a local first-release check before the SDK is published, install the SDK with
-`mvn -B -ntp -pl '!collaboration,!integration-tests,!examples' install`, then run the
-standalone collaboration check. The publishing workflow deliberately does not do
-this local installation: it must resolve the SDK version consumers will receive.
+`mvn -B -ntp -pl '!collaboration,!memory-plugin,!integration-tests,!examples' install`, then run the
+standalone collaboration or Memory plugin check. The publishing workflow does
+not install the SDK locally. It resolves the SDK version consumers receive.

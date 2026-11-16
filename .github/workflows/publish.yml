@@ -8,11 +8,12 @@ on:
         required: true
         default: sdk
         type: choice
-        options: [sdk, collaboration]
+        options: [sdk, collaboration, memory-plugin]
   push:
     tags:
       - 'sdk-v*.*.*'
       - 'collaboration-v*.*.*'
+      - 'memory-plugin-v*.*.*'
 
 permissions:
   contents: read
@@ -53,11 +54,15 @@ jobs:
           case "$package" in
             sdk)
               pom=pom.xml
-              projects='!collaboration,!integration-tests,!examples'
+              projects='!collaboration,!memory-plugin,!integration-tests,!examples'
               ;;
             collaboration)
               pom=collaboration/pom.xml
               projects=:agentcore-collaboration
+              ;;
+            memory-plugin)
+              pom=memory-plugin/pom.xml
+              projects=:agentcore-memory-plugin
               ;;
             *) echo "Unsupported package: $package"; exit 1 ;;
           esac

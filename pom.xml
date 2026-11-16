@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.github.ai-agentcore</groupId>
   <artifactId>agentcore-sdk-parent</artifactId>
-  <version>0.1.5</version>
+  <version>0.1.6</version>
   <packaging>pom</packaging>
   <name>AgentCore SDK for Java</name>
   <description>Java SDK for AgentCore resources and Agent frameworks</description>
@@ -17,6 +17,7 @@
   </scm>
   <modules>
     <module>core</module>
+    <module>memory-plugin</module>
     <module>server</module>
     <module>spring-ai</module>
     <module>langchain4j</module>

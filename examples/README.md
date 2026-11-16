@@ -12,6 +12,7 @@
 | [SpringAIAgent](src/main/java/example/SpringAIAgent.java) | Spring AI 工具循环与完整执行事件 |
 | [AgentScopeAgent](src/main/java/example/AgentScopeAgent.java) | AgentScope Java 工具与执行事件 |
 | [MemoryAdapters](src/main/java/example/MemoryAdapters.java) | 三种框架检索记忆，可选自动回写本轮对话；读写 Scope 分离 |
+| [ContextMemoryExample](src/main/java/example/ContextMemoryExample.java) | 原生 Context 检索、事件写入及分页对账，返回可组合的 Mono |
 | [NativeFrameworkAgents](src/main/java/example/NativeFrameworkAgents.java) | 使用三个框架各自的原生模型，接入 AgentCore 工具与执行事件 |
 | [ProviderModels](src/main/java/example/ProviderModels.java) | Spring AI 多供应商模型与 Embedding |
 | [ServerExtensions](src/main/java/example/ServerExtensions.java) | 自定义协议路由与就绪检查 |
