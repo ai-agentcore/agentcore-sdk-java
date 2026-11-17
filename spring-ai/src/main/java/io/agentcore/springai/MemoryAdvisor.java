@@ -1,6 +1,7 @@
 package io.agentcore.springai;
 
 import io.agentcore.memory.MemoryContext;
+import io.agentcore.memory.FrameworkMemory;
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.client.advisor.api.CallAdvisor;
@@ -16,10 +17,12 @@ import reactor.core.publisher.Mono;
 
 /** Encloses the tool loop; each subscription retains only its own current turn. */
 public final class MemoryAdvisor implements CallAdvisor, StreamAdvisor {
-    private final MemoryContext memory;
+    private final FrameworkMemory memory;
     private final boolean writeBack;
     public MemoryAdvisor(MemoryContext memory) { this(memory, false); }
-    public MemoryAdvisor(MemoryContext memory, boolean writeBack) {
+    public MemoryAdvisor(MemoryContext memory, boolean writeBack) { this((FrameworkMemory) memory, writeBack); }
+    public MemoryAdvisor(FrameworkMemory memory) { this(memory, false); }
+    public MemoryAdvisor(FrameworkMemory memory, boolean writeBack) {
         this.memory = memory; this.writeBack = writeBack;
         if (writeBack) memory.requireWriteScope();
     }

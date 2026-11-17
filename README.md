@@ -242,7 +242,7 @@ public class MemoryExample {
 
 如需等待提取完成，使用 `store.addMemories(text, scope, metadata, true)` 或 `store.addMessages(messages, scope, metadata, true)`，从返回值的 `data.memories` 读取结果。响应式应用可直接组合返回的 `Mono`。
 
-需要 Agent 自动检索和使用记忆时，参见 [Memory 框架接入步骤](examples/README.md#为框架添加-memory)和[完整示例](examples/src/main/java/example/MemoryAdapters.java)。自动回写默认关闭，显式开启后只保存本轮用户输入和最终文本答案，不重复写入历史消息或工具结果。每个请求应使用对应用户的 `MemoryContext`，不要混用不同用户的记忆范围。
+需要 Agent 自动检索和使用记忆时，参见 [Memory 框架接入步骤](examples/README.md#为框架添加-memory)和[完整示例](examples/src/main/java/example/MemoryAdapters.java)。自动回写默认关闭，显式开启后只保存本轮用户输入和最终文本答案，不重复写入历史消息或工具结果。使用 `ContextMemoryBinding(core.contextMemory(name), readScope, writeScope, topK)` 接入事件写入和记忆检索；已有 `MemoryContext` 用法继续支持。每个请求应绑定对应用户的记忆范围。
 
 基础用法见 [Memory 示例](examples/src/main/java/example/MemoryExample.java)。
 

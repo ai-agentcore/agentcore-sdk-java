@@ -94,10 +94,10 @@ java -cp 'examples/target/classes:examples/target/dependency/*' example.AgentSco
 
 ```java
 var model = core.model("my-connection", "my-model").block();
-var store = core.memory("my-memory-store");
+var store = core.contextMemory("my-memory-store");
 var readScope = new MemoryScope("example-user", "example-agent", null);
 var writeScope = new MemoryScope("example-user", "example-agent", "example-session");
-var memory = new MemoryContext(store, readScope, writeScope, 5);
+var memory = new ContextMemoryBinding(store, readScope, writeScope, 5);
 String answer = MemoryAdapters.langchain4j(model, memory, "我喜欢简短的中文回答。").block();
 ```
 
@@ -121,9 +121,11 @@ java -cp 'examples/target/classes:examples/target/dependency/*' example.MemoryAd
 
 示例中的三个适配器均显式传入 `true`，会写入本轮用户输入和正常完成的最终文本答案。只检索、不回写时，使用不带布尔参数的构造函数。不要在自动回写之外再手动保存同一轮对话。
 
+`ContextMemoryBinding` 使用基础客户端检索记忆，将当前用户输入和最终文本答案保存为事件。事件保存成功不代表长期记忆已提取完成；适配器不等待提取结果。已有应用可以继续使用 `new MemoryContext(core.memory(name), readScope, writeScope, 5)`，保留原有 AddMemories 写入方式。
+
 直接写入记忆和查询任务进度的用法见 [MemoryExample.java](src/main/java/example/MemoryExample.java)。
 
-新记忆不是立即可检索的；首次查询为空不能单独说明写入失败。适配器遇到 SDK 记忆服务错误时会记录诊断日志并继续对话，因此“模型有回答”也不等于“记忆写入成功”。应用需配置 SLF4J 日志实现，并检查记忆操作日志或后续查询结果。直接调用 `MemoryStore` 的错误仍会向调用者抛出。
+新记忆不是立即可检索的；首次查询为空不能单独说明写入失败。适配器遇到 SDK 记忆服务错误时会记录诊断日志并继续对话，因此“模型有回答”也不等于“记忆写入成功”。应用需配置 SLF4J 日志实现，并检查记忆操作日志或后续查询结果。直接调用基础记忆客户端的错误仍会向调用者抛出。
 
 长期记忆不替代框架的会话历史。此示例不会恢复完整历史消息，也不将历史消息或工具结果重复回写。
 

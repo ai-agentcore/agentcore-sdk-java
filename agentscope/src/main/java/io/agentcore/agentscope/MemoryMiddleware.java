@@ -1,6 +1,7 @@
 package io.agentcore.agentscope;
 
 import io.agentcore.memory.MemoryContext;
+import io.agentcore.memory.FrameworkMemory;
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.*;
@@ -14,10 +15,12 @@ import reactor.core.publisher.Mono;
 /** Invocation-local recall and opt-in write-back, shared by call() and streamEvents(). */
 public final class MemoryMiddleware implements MiddlewareBase {
     private final Object recallKey = new Object();
-    private final MemoryContext memory;
+    private final FrameworkMemory memory;
     private final boolean writeBack;
     public MemoryMiddleware(MemoryContext memory) { this(memory, false); }
-    public MemoryMiddleware(MemoryContext memory, boolean writeBack) {
+    public MemoryMiddleware(MemoryContext memory, boolean writeBack) { this((FrameworkMemory) memory, writeBack); }
+    public MemoryMiddleware(FrameworkMemory memory) { this(memory, false); }
+    public MemoryMiddleware(FrameworkMemory memory, boolean writeBack) {
         this.memory = memory; this.writeBack = writeBack;
         if (writeBack) memory.requireWriteScope();
     }

@@ -85,6 +85,27 @@ class ContextMemoryClientTest {
   }
 
   @Test
+  void frameworkBindingDoesNotRetryPartialWritesAndLogsTheRequestId() {
+    var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(ContextMemoryBinding.class);
+    var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+    appender.start(); logger.addAppender(appender);
+    try {
+      response = success(Map.of("results", List.of(
+          Map.of("inputIndex", 0, "status", "STORED", "eventId", "e1"),
+          Map.of("inputIndex", 1, "status", "REJECTED", "code", "PolicyDenied", "message", "Write rejected"))));
+      var binding = new ContextMemoryBinding(client, scope, 100);
+      binding.recordTurn("question", "answer").block(Duration.ofSeconds(5));
+      assertEquals(1, requests.size());
+      assertEquals("CreateEvents", requests.get(0).action());
+      assertTrue(appender.list.stream().anyMatch(event -> event.getFormattedMessage().contains("request_id=req-header")
+          && event.getFormattedMessage().contains("service_code=PolicyDenied")));
+      binding.recordTurn("", "answer").block();
+      assertEquals(1, requests.size());
+      assertThrows(IllegalArgumentException.class, () -> new ContextMemoryBinding(client, scope, null, 5).recordTurn("q", "a"));
+    } finally { logger.detachAppender(appender); appender.stop(); }
+  }
+
+  @Test
   void createSignsContextRequestAndPreservesOutOfOrderReceipts() {
     response =
         success(

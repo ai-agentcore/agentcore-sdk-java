@@ -55,7 +55,7 @@ try (var server = new AgentCoreServer(request -> Flux.using(
 
 ## 添加 Memory 或使用原生模型
 
-在创建 `ReActAgent` 时注册 `.middleware(new MemoryMiddleware(memory, true))`，其中 `memory` 是本次请求对应的 `MemoryContext`，`true` 表示显式开启本轮对话回写。完整上下文构造和调用见 [MemoryAdapters.agentscope](../examples/src/main/java/example/MemoryAdapters.java) 与 [Memory 指南](../examples/README.md#为框架添加-memory)。
+在创建 `ReActAgent` 时注册 `.middleware(new MemoryMiddleware(memory, true))`，其中 `memory` 是本次请求对应的 `ContextMemoryBinding`（也支持原有 `MemoryContext`），`true` 表示显式开启本轮对话回写。完整上下文构造和调用见 [MemoryAdapters.agentscope](../examples/src/main/java/example/MemoryAdapters.java) 与 [Memory 指南](../examples/README.md#为框架添加-memory)。
 
 需要流式服务时，仍通过 `agent.streamEvents(...)` 与 `AgentScopeEvents.from(...)` 输出事件，Memory Middleware 随该 Agent 的执行流程生效。长期记忆范围与 Agent 的短期会话状态分别管理。
 
