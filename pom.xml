@@ -17,7 +17,6 @@
   </scm>
   <modules>
     <module>core</module>
-    <module>memory-plugin</module>
     <module>server</module>
     <module>spring-ai</module>
     <module>langchain4j</module>
