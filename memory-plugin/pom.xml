@@ -3,7 +3,7 @@
   <parent>
     <groupId>io.github.ai-agentcore</groupId>
     <artifactId>agentcore-sdk-parent</artifactId>
-    <version>0.1.6</version>
+    <version>0.1.7</version>
   </parent>
   <artifactId>agentcore-memory-plugin</artifactId>
   <version>0.1.0</version>
