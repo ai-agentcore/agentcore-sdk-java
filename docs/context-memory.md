@@ -1,6 +1,6 @@
 # 原生 Context Memory
 
-`AgentCore.contextMemory` 绑定一个已有 Workspace 中的 Memory Store，提供 CreateEvents、分页 ListEvents 和 SearchMemories。原有 `memory(name)`、MemoryStore CRUD 与 Map 返回值保持兼容。此能力随核心 `io.github.ai-agentcore:agentcore-sdk:0.1.6` 准备发布。
+`AgentCore.contextMemory` 绑定一个已有 Workspace 中的 Memory Store，提供 CreateEvents、分页 ListEvents 和 SearchMemories。原有 `memory(name)`、MemoryStore CRUD 与 Map 返回值保持兼容。
 
 ```java
 import io.agentcore.AgentCore;

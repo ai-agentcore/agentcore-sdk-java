@@ -31,13 +31,11 @@
 
 需要 JDK 17+、Maven 3.9+。SDK 发布在 Maven Central，无需自行构建或添加额外仓库。在应用中添加所需模块，例如基础 SDK：
 
-本分支准备 `0.1.6`，尚未发布。原生 Context API 从该版本提供；已有 `0.1.5` 不包含这些 API。
-
 ```xml
 <dependency>
   <groupId>io.github.ai-agentcore</groupId>
   <artifactId>agentcore-sdk</artifactId>
-  <version>0.1.6</version>
+  <version>0.1.7</version>
 </dependency>
 ```
 

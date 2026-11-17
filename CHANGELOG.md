@@ -1,10 +1,16 @@
 # Release notes
 
-## SDK 0.1.6 (unreleased)
+## SDK 0.1.7 — 2026-11-17
+
+- Spring AI、LangChain4j 和 AgentScope 的 Memory 适配器支持通过 ContextMemoryBinding 使用基础 Context Memory 客户端检索记忆和写入本轮对话事件。
+- 保留原有 MemoryContext 构造方法和写回行为；自动写回仍需显式开启，仅保存正常完成的本轮用户输入和最终文本答案。
+- 检查逐事件写入回执，失败时记录请求 ID；更新框架用法示例与普通、流式、取消和并发回归测试。
+
+## SDK 0.1.6
 
 - Add native Context Memory CreateEvents, paginated ListEvents and rich SearchMemories using context credentials, independent scope dimensions and explicit uncertain-write errors.
 - Add the optional plugin's native adapter while preserving gateway constructors and existing MemoryStore APIs.
-- Require aligned core 0.1.6 from the plugin because released 0.1.5 does not export the native client. Plugin and collaboration retain their independent versions. No release is published by this change.
+- Require aligned core 0.1.6 from the plugin because released 0.1.5 does not export the native client. Plugin and collaboration retain their independent versions.
 
 ## SDK 0.1.5 — 2026-11-03
 
