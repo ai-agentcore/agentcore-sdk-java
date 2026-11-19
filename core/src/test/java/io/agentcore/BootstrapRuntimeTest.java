@@ -87,6 +87,14 @@ class BootstrapRuntimeTest {
             "controllerUrl", root, "modelGatewayUrl", "https://public.example.com", "matrixUrl", root, "futureField", true))
             .getBytes(StandardCharsets.UTF_8));
     }
+    @Test void highCodeTokenLoadsConfigWithoutMatrix() {
+        String encoded = Base64.getEncoder().encodeToString(Json.write(Map.of("product", "agentcore", "jwtToken", "jwt-initial",
+            "controllerUrl", root, "modelGatewayUrl", root)).getBytes(StandardCharsets.UTF_8));
+        try (var core = AgentCore.builder().bootstrapToken(encoded).build()) {
+            assertEquals("ws-bootstrap", core.bootstrapRuntime().config().block(Duration.ofSeconds(5)).workspaceId());
+            assertThrows(IllegalStateException.class, core.bootstrapRuntime()::matrixUrl);
+        }
+    }
     @Test void bootstrapWinsOverLocalConfigAndLoadsYamlOnlyInMemory() throws Exception {
         Path path = directory.resolve("agent.yaml"); Files.writeString(path, "invalid-local-config");
         try (var core = AgentCore.builder().configPath(path).bootstrapToken(token()).build()) {
