@@ -1,5 +1,11 @@
 # Release notes
 
+## SDK 0.1.8 — 2026-11-19
+
+- 绑定凭据使用的 Workload Access Token（WAT）在到期前 30 秒按需刷新。刷新遇到临时故障时，可继续使用仍有效且未被拒绝的旧票。
+- AgentIdentityData 拒绝 WAT 时，清除缓存并换票重试一次。第二次也被拒绝时，清除该票并返回错误。
+- 移除此前未发布的独立 Memory Plugin 源码和构建配置。
+
 ## SDK 0.1.7 — 2026-11-17
 
 - Spring AI、LangChain4j 和 AgentScope 的 Memory 适配器支持通过 ContextMemoryBinding 使用基础 Context Memory 客户端检索记忆和写入本轮对话事件。
