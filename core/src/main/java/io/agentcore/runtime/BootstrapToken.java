@@ -21,12 +21,15 @@ public final class BootstrapToken {
             URI controller = AgentConfig.httpUrl(data.get("controllerUrl"));
             if (!controller.getPath().isEmpty() && !controller.getPath().equals("/")) throw new IllegalArgumentException();
             return new BootstrapToken(Json.text(data.get("jwtToken"), "jwtToken"), controller,
-                AgentConfig.httpUrl(data.get("modelGatewayUrl")), AgentConfig.httpUrl(data.get("matrixUrl")));
+                AgentConfig.httpUrl(data.get("modelGatewayUrl")), data.containsKey("matrixUrl") ? AgentConfig.httpUrl(data.get("matrixUrl")) : null);
         } catch (Exception error) { throw new IllegalArgumentException("AGENTCORE_DEBUG_TOKEN is invalid"); }
     }
     String jwt() { return jwt; }
     public URI controller() { return controller; }
     public URI gateway() { return gateway; }
-    public URI matrix() { return matrix; }
+    public URI matrix() {
+        if (matrix == null) throw new IllegalStateException("matrixUrl is required for Matrix access");
+        return matrix;
+    }
     @Override public String toString() { return "BootstrapToken(<redacted>)"; }
 }
