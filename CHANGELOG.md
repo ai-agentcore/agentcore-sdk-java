@@ -1,5 +1,9 @@
 # Release notes
 
+## SDK 0.1.9 — 2026-11-19
+
+- 高代码本地调试支持省略 `matrixUrl` 的调试 Token。模型和 MCP 可继续使用平台网关，已有携带 Matrix 地址的纳管 Token 仍可使用。
+
 ## SDK 0.1.8 — 2026-11-19
 
 - 绑定凭据使用的 Workload Access Token（WAT）在到期前 30 秒按需刷新。刷新遇到临时故障时，可继续使用仍有效且未被拒绝的旧票。
