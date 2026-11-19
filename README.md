@@ -35,7 +35,7 @@
 <dependency>
   <groupId>io.github.ai-agentcore</groupId>
   <artifactId>agentcore-sdk</artifactId>
-  <version>0.1.8</version>
+  <version>0.1.9</version>
 </dependency>
 ```
 
