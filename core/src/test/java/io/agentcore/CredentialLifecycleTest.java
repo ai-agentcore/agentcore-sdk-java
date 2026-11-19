@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import reactor.core.publisher.Flux;
@@ -105,6 +106,42 @@ class CredentialLifecycleTest {
             credentials.invalidateWorkloadAccessToken(original);
             assertEquals(fresh, credentials.workloadAccessToken().block(Duration.ofSeconds(5)));
             assertEquals(2, watCalls.get());
+        } finally { server.stop(0); }
+    }
+    @ParameterizedTest
+    @CsvSource({"503, 20, true", "503, -60, false", "401, 20, false", "0, 20, true"})
+    void fallsBackOnlyOnTransientRefreshFailureWithValidWat(int status, long secondsUntilExpiry,
+            boolean canReuse) throws Exception {
+        long expiry = Instant.now().getEpochSecond() + secondsUntilExpiry;
+        var original = watWithClaims(Json.write(Map.of("exp", expiry)));
+        var calls = new AtomicInteger();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v1/workload/token", exchange -> {
+            if (calls.incrementAndGet() == 1) {
+                byte[] body = Json.write(Map.of("workloadAccessToken", original)).getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
+            } else if (status != 0) {
+                exchange.sendResponseHeaders(status, -1);
+            }
+            exchange.close();
+        });
+        server.start();
+        try {
+            var credentials = new ControllerCredentials("http://127.0.0.1:" + server.getAddress().getPort(),
+                () -> Mono.just("sa-fixture"), new HttpTransport());
+            assertEquals(original, credentials.workloadAccessToken().block(Duration.ofSeconds(5)));
+            if (canReuse) {
+                var tokens = Flux.range(0, 10).flatMap(i -> credentials.workloadAccessToken())
+                    .collectList().block(Duration.ofSeconds(5));
+                assertEquals(java.util.Collections.nCopies(10, original), tokens);
+                assertEquals(original, credentials.workloadAccessToken().block(Duration.ofSeconds(5)));
+            } else {
+                var error = assertThrows(AgentCoreException.class,
+                    () -> credentials.workloadAccessToken().block(Duration.ofSeconds(5)));
+                assertEquals(status, error.status());
+            }
+            assertEquals(status == 503 ? 4 : 2, calls.get());
         } finally { server.stop(0); }
     }
     @ParameterizedTest

@@ -38,7 +38,10 @@ public final class BoundCredentials {
                         .onErrorResume(AgentCoreException.class, error -> {
                             if (!isWatRejection(error.serviceCode())) return Mono.error(error);
                             source.invalidateWorkloadAccessToken(wat);
-                            return source.workloadAccessToken().flatMap(fresh -> exchange(cp, name, sts, fresh));
+                            return source.workloadAccessToken().flatMap(fresh -> exchange(cp, name, sts, fresh)
+                                .doOnError(AgentCoreException.class, rejected -> {
+                                    if (isWatRejection(rejected.serviceCode())) source.invalidateWorkloadAccessToken(fresh);
+                                }));
                         })))).map(value -> new BoundCredential(value, metadata));
             }));
     }

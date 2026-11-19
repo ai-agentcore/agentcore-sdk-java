@@ -18,11 +18,13 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 /** STS and WAT have separate lifetimes. The projected SA file is read for each exchange. */
 public final class ControllerCredentials implements CredentialProvider {
+    private static final String WORKLOAD_TOKEN_PATH = "/api/v1/workload/token";
     private static final long WAT_REFRESH_BEFORE_SECONDS = 30;
     private static final ObjectReader WAT_CLAIMS = new ObjectMapper().reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     private final String endpoint;
@@ -33,7 +35,10 @@ public final class ControllerCredentials implements CredentialProvider {
     private CachedWat wat;
     private Mono<String> watPending;
     private record Cached(AccessKeyCredential credential, Instant expiration) {}
-    private record CachedWat(String token, long expiresAt) {}
+    private record CachedWat(String token, long expiresAt, long refreshAt) {}
+    private static final class WorkloadTokenTransportFailure extends RuntimeException {
+        WorkloadTokenTransportFailure(IOException cause) { super(cause); }
+    }
 
     public ControllerCredentials(String endpoint, Path tokenFile, HttpTransport http) {
         this(endpoint, () -> Mono.fromCallable(() -> Files.readString(tokenFile).trim()).subscribeOn(Schedulers.boundedElastic()), http);
@@ -64,23 +69,31 @@ public final class ControllerCredentials implements CredentialProvider {
         return Mono.defer(this::resolveWorkloadAccessToken);
     }
     private synchronized Mono<String> resolveWorkloadAccessToken() {
-        if (wat != null && (wat.expiresAt == 0 || wat.expiresAt > Instant.now().getEpochSecond() + WAT_REFRESH_BEFORE_SECONDS)) {
+        if (wat != null && (wat.expiresAt == 0 || wat.refreshAt > Instant.now().getEpochSecond())) {
             return Mono.just(wat.token);
         }
         if (watPending == null) {
-            watPending = post("/api/v1/workload/token", null)
+            watPending = request(WORKLOAD_TOKEN_PATH, Map.of(), true)
                 .map(value -> Json.text(value.get("workloadAccessToken"), "workloadAccessToken"))
                 .doOnNext(token -> {
                     long expiresAt = workloadTokenExpiry(token);
                     synchronized (this) {
-                        wat = new CachedWat(token, expiresAt);
-                        watPending = null;
+                        wat = new CachedWat(token, expiresAt, expiresAt - WAT_REFRESH_BEFORE_SECONDS);
                     }
                 })
-                .doOnError(error -> { synchronized (this) { watPending = null; } })
+                .onErrorResume(error -> error instanceof WorkloadTokenTransportFailure || isRetryableStatus(error),
+                    this::reuseValidWorkloadToken)
+                .doOnTerminate(() -> { synchronized (this) { watPending = null; } })
                 .cache();
         }
         return watPending;
+    }
+    private synchronized Mono<String> reuseValidWorkloadToken(Throwable error) {
+        if (wat == null || wat.expiresAt <= Instant.now().getEpochSecond()) {
+            return Mono.error(error instanceof WorkloadTokenTransportFailure ? error.getCause() : error);
+        }
+        wat = new CachedWat(wat.token, wat.expiresAt, wat.expiresAt);
+        return Mono.just(wat.token);
     }
     public synchronized void invalidateWorkloadAccessToken(String rejectedToken) {
         if (wat != null && wat.token.equals(rejectedToken)) wat = null;
@@ -101,21 +114,30 @@ public final class ControllerCredentials implements CredentialProvider {
         return request(path, purpose == null ? Map.of() : Map.of("purpose", purpose));
     }
     public Mono<Map<String, Object>> request(String path, Map<String, String> query) {
+        return request(path, query, false);
+    }
+    private Mono<Map<String, Object>> request(String path, Map<String, String> query, boolean workloadToken) {
         String parameters = query.entrySet().stream().map(e -> ControlPlane.encode(e.getKey()) + "=" + ControlPlane.encode(e.getValue()))
             .collect(java.util.stream.Collectors.joining("&"));
         URI url = URI.create(endpoint + path + (parameters.isEmpty() ? "" : "?" + parameters));
-        return Mono.defer(tokens::get).flatMap(token -> send(url, token).onErrorResume(AgentCoreException.class,
+        return Mono.defer(tokens::get).flatMap(token -> send(url, token, workloadToken).onErrorResume(AgentCoreException.class,
             error -> Integer.valueOf(401).equals(error.status())
-                ? tokens.refresh(token).flatMap(fresh -> fresh.equals(token) ? Mono.error(error) : send(url, fresh)) : Mono.error(error)));
+                ? tokens.refresh(token).flatMap(fresh -> fresh.equals(token)
+                    ? Mono.error(error) : send(url, fresh, workloadToken)) : Mono.error(error)));
     }
-    private Mono<Map<String, Object>> send(URI url, String token) {
-        return http.json("Controller credentials", "POST", url,
+    private Mono<Map<String, Object>> send(URI url, String token, boolean workloadToken) {
+        var response = http.json("Controller credentials", "POST", url,
             () -> Mono.just(Map.of("Authorization", "Bearer " + token)), null, Duration.ofSeconds(30))
             .retryWhen(reactor.util.retry.Retry.backoff(2, Duration.ofMillis(250))
-                .filter(error -> EndpointFallback.connectionFailure(error) || error instanceof AgentCoreException api
-                    && api.status() != null && java.util.Set.of(500, 502, 503, 504).contains(api.status()))
+                .filter(error -> EndpointFallback.connectionFailure(error) || isRetryableStatus(error))
                 .doBeforeRetry(signal -> org.slf4j.LoggerFactory.getLogger(ControllerCredentials.class)
                     .warn("agentcore.credentials.retry endpoint={}{} attempt={}", url.getAuthority(), url.getPath(), signal.totalRetries() + 2))
                 .onRetryExhaustedThrow((spec, signal) -> signal.failure()));
+        // Distinguish HTTP I/O from errors reading the Agent SA token file.
+        return workloadToken ? response.onErrorMap(IOException.class, WorkloadTokenTransportFailure::new) : response;
+    }
+    private static boolean isRetryableStatus(Throwable error) {
+        return error instanceof AgentCoreException api
+            && api.status() != null && Set.of(500, 502, 503, 504).contains(api.status());
     }
 }

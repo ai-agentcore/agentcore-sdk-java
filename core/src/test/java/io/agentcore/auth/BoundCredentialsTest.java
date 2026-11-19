@@ -51,7 +51,7 @@ class BoundCredentialsTest {
                 .map(field -> URLDecoder.decode(field.substring("WorkloadAccessToken=".length()), StandardCharsets.UTF_8))
                 .findFirst().orElse("");
             seen.add(token);
-            if (retrySucceeds && seen.size() == 2) {
+            if (retrySucceeds && seen.size() == 2 || !retrySucceeds && expectedCalls == 2 && seen.size() == 3) {
                 reply(request, 200, Map.of("APIKey", "fixture-key"));
             } else {
                 reply(request, code.equals("Forbidden") ? 403 : 400,
@@ -75,6 +75,11 @@ class BoundCredentialsTest {
             }
             assertEquals(expectedCalls == 2 ? List.of("wat-1", "wat-2") : List.of("wat-1"), seen);
             assertEquals(expectedCalls, watCalls.get());
+            if (!retrySucceeds && expectedCalls == 2) {
+                assertEquals("fixture-key", credentials.get("my-key").block(Duration.ofSeconds(5)).value());
+                assertEquals(List.of("wat-1", "wat-2", "wat-3"), seen);
+                assertEquals(3, watCalls.get());
+            }
         } finally {
             server.stop(0);
         }
