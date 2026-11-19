@@ -1,15 +1,21 @@
 package io.agentcore.auth;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
 import io.agentcore.HttpTransport;
 import io.agentcore.Json;
 import io.agentcore.AgentCoreException;
 import io.agentcore.controlplane.ControlPlane;
 import io.agentcore.controlplane.EndpointFallback;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import reactor.core.publisher.Mono;
@@ -17,14 +23,17 @@ import reactor.core.scheduler.Schedulers;
 
 /** STS and WAT have separate lifetimes. The projected SA file is read for each exchange. */
 public final class ControllerCredentials implements CredentialProvider {
+    private static final long WAT_REFRESH_BEFORE_SECONDS = 30;
+    private static final ObjectReader WAT_CLAIMS = new ObjectMapper().reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     private final String endpoint;
     private final AgentSATokenSource tokens;
     private final HttpTransport http;
     private final Map<String, Cached> cache = new HashMap<>();
     private final Map<String, Mono<AccessKeyCredential>> pending = new HashMap<>();
-    private Mono<String> wat;
-    private String watValue;
+    private CachedWat wat;
+    private Mono<String> watPending;
     private record Cached(AccessKeyCredential credential, Instant expiration) {}
+    private record CachedWat(String token, long expiresAt) {}
 
     public ControllerCredentials(String endpoint, Path tokenFile, HttpTransport http) {
         this(endpoint, () -> Mono.fromCallable(() -> Files.readString(tokenFile).trim()).subscribeOn(Schedulers.boundedElastic()), http);
@@ -52,18 +61,41 @@ public final class ControllerCredentials implements CredentialProvider {
         return request;
     }
     public Mono<String> workloadAccessToken() {
-        return Mono.defer(() -> {
-            synchronized (this) {
-                if (wat == null) wat = post("/api/v1/workload/token", null)
-                    .map(value -> Json.text(value.get("workloadAccessToken"), "workloadAccessToken"))
-                    .doOnNext(value -> { synchronized (this) { watValue = value; } })
-                    .doOnError(e -> { synchronized (this) { wat = null; } }).cache();
-                return wat;
-            }
-        });
+        return Mono.defer(this::resolveWorkloadAccessToken);
+    }
+    private synchronized Mono<String> resolveWorkloadAccessToken() {
+        if (wat != null && (wat.expiresAt == 0 || wat.expiresAt > Instant.now().getEpochSecond() + WAT_REFRESH_BEFORE_SECONDS)) {
+            return Mono.just(wat.token);
+        }
+        if (watPending == null) {
+            watPending = post("/api/v1/workload/token", null)
+                .map(value -> Json.text(value.get("workloadAccessToken"), "workloadAccessToken"))
+                .doOnNext(token -> {
+                    long expiresAt = workloadTokenExpiry(token);
+                    synchronized (this) {
+                        wat = new CachedWat(token, expiresAt);
+                        watPending = null;
+                    }
+                })
+                .doOnError(error -> { synchronized (this) { watPending = null; } })
+                .cache();
+        }
+        return watPending;
     }
     public synchronized void invalidateWorkloadAccessToken(String rejectedToken) {
-        if (java.util.Objects.equals(watValue, rejectedToken)) { wat = null; watValue = null; }
+        if (wat != null && wat.token.equals(rejectedToken)) wat = null;
+    }
+    private static long workloadTokenExpiry(String token) {
+        // The unverified claim is a cache hint only. Zero represents a missing expiry.
+        String[] parts = token.split("\\.", 4);
+        if (parts.length != 3 || parts[0].isEmpty() || parts[1].isEmpty() || parts[2].isEmpty()) return 0;
+        try {
+            JsonNode claims = WAT_CLAIMS.readTree(Base64.getUrlDecoder().decode(parts[1]));
+            JsonNode exp = claims.path("exp");
+            return exp.isIntegralNumber() && exp.canConvertToLong() ? Math.max(0, exp.longValue()) : 0;
+        } catch (IllegalArgumentException | IOException e) {
+            return 0;
+        }
     }
     private Mono<Map<String, Object>> post(String path, String purpose) {
         return request(path, purpose == null ? Map.of() : Map.of("purpose", purpose));

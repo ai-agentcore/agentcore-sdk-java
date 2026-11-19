@@ -9,12 +9,16 @@ import java.nio.file.Path;
 import java.nio.file.Files;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import static org.junit.jupiter.api.Assertions.*;
@@ -82,6 +86,59 @@ class CredentialLifecycleTest {
         var failure = new IllegalArgumentException("missing workspace");
         var memory = new MemoryStore("store", () -> Mono.error(failure));
         assertSame(failure, assertThrows(IllegalArgumentException.class, () -> memory.addMemories("text", null).block()));
+    }
+    @ParameterizedTest
+    @ValueSource(longs = {15, -60})
+    void workloadTokenRefreshesNearOrAfterExpiryWithOneExchange(long secondsUntilExpiry) throws Exception {
+        long now = Instant.now().getEpochSecond();
+        var original = watWithClaims(Json.write(Map.of("exp", now + secondsUntilExpiry)));
+        var fresh = watWithClaims(Json.write(Map.of("exp", now + 3600)));
+        var watCalls = new AtomicInteger();
+        var server = workloadTokenServer(watCalls, original, fresh);
+        try {
+            var credentials = new ControllerCredentials("http://127.0.0.1:" + server.getAddress().getPort(),
+                () -> Mono.just("sa-fixture"), new HttpTransport());
+            assertEquals(original, credentials.workloadAccessToken().block(Duration.ofSeconds(5)));
+            var tokens = Flux.range(0, 10).flatMap(i -> credentials.workloadAccessToken())
+                .collectList().block(Duration.ofSeconds(5));
+            assertEquals(java.util.Collections.nCopies(10, fresh), tokens);
+            credentials.invalidateWorkloadAccessToken(original);
+            assertEquals(fresh, credentials.workloadAccessToken().block(Duration.ofSeconds(5)));
+            assertEquals(2, watCalls.get());
+        } finally { server.stop(0); }
+    }
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"not-json", "null", "{}", "{\"exp\":\"1\"}", "{\"exp\":true}", "{\"exp\":1.5}"})
+    void workloadTokenWithoutUsableExpiryKeepsExistingCache(String claims) throws Exception {
+        var original = claims == null ? "opaque" : watWithClaims(claims);
+        var watCalls = new AtomicInteger();
+        var server = workloadTokenServer(watCalls, original, "fresh");
+        try {
+            var credentials = new ControllerCredentials("http://127.0.0.1:" + server.getAddress().getPort(),
+                () -> Mono.just("sa-fixture"), new HttpTransport());
+            assertEquals(original, credentials.workloadAccessToken().block(Duration.ofSeconds(5)));
+            assertEquals(original, credentials.workloadAccessToken().block(Duration.ofSeconds(5)));
+            credentials.invalidateWorkloadAccessToken(original);
+            assertEquals("fresh", credentials.workloadAccessToken().block(Duration.ofSeconds(5)));
+            assertEquals(2, watCalls.get());
+        } finally { server.stop(0); }
+    }
+    private static String watWithClaims(String claims) {
+        var payload = Base64.getUrlEncoder().withoutPadding().encodeToString(claims.getBytes(StandardCharsets.UTF_8));
+        return "e30." + payload + ".c2ln";
+    }
+    private static HttpServer workloadTokenServer(AtomicInteger calls, String original, String fresh) throws java.io.IOException {
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v1/workload/token", exchange -> {
+            var token = calls.incrementAndGet() == 1 ? original : fresh;
+            byte[] body = Json.write(Map.of("workloadAccessToken", token)).getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        return server;
     }
     @Test void controllerTransientFailureRetriesButAuthenticationFailureDoesNot() throws Exception {
         Path token = directory.resolve("token"); Files.writeString(token, "sa-fixture");

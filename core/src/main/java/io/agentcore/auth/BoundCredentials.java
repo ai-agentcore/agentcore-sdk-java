@@ -7,17 +7,25 @@ import com.aliyun.teautil.models.RuntimeOptions;
 import io.agentcore.AgentCoreException;
 import io.agentcore.Json;
 import io.agentcore.controlplane.ControlPlane;
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 public final class BoundCredentials {
+    private static final Set<String> WAT_ERROR_CODES = Set.of(
+        "WORKLOAD_ACCESS_TOKEN_EXPIRED", "WORKLOAD_ACCESS_TOKEN_INVALID", "InvalidParameter.WorkloadAccessToken");
     private final Supplier<Mono<ControlPlane>> controlPlane;
     private final Supplier<Mono<ControllerCredentials>> controller;
+    private final URI identityEndpoint;
     public BoundCredentials(Supplier<Mono<ControlPlane>> controlPlane, Supplier<Mono<ControllerCredentials>> controller) {
-        this.controlPlane = controlPlane; this.controller = controller;
+        this(controlPlane, controller, null);
+    }
+    BoundCredentials(Supplier<Mono<ControlPlane>> controlPlane, Supplier<Mono<ControllerCredentials>> controller, URI identityEndpoint) {
+        this.controlPlane = controlPlane; this.controller = controller; this.identityEndpoint = identityEndpoint;
     }
     public Mono<BoundCredential> get(String name) { return resolve(name, null); }
     public Mono<BoundCredential> forMcp(String name, String serverId) { return resolve(name, serverId); }
@@ -27,11 +35,15 @@ public final class BoundCredentials {
                 if (serverId != null) validateScope(metadata, serverId);
                 return Mono.defer(controller).flatMap(source -> source.get("agentidentitydata")
                     .flatMap(sts -> source.workloadAccessToken().flatMap(wat -> exchange(cp, name, sts, wat)
-                        .onErrorResume(WatRejected.class, error -> {
+                        .onErrorResume(AgentCoreException.class, error -> {
+                            if (!isWatRejection(error.serviceCode())) return Mono.error(error);
                             source.invalidateWorkloadAccessToken(wat);
                             return source.workloadAccessToken().flatMap(fresh -> exchange(cp, name, sts, fresh));
                         })))).map(value -> new BoundCredential(value, metadata));
             }));
+    }
+    private static boolean isWatRejection(String code) {
+        return code != null && WAT_ERROR_CODES.contains(code);
     }
     private static void validateScope(Map<String, Object> metadata, String serverId) {
         if (!"mcpHeader".equals(metadata.get("credentialType"))) throw new IllegalArgumentException("MCP binding requires an MCP Header credential");
@@ -41,10 +53,11 @@ public final class BoundCredentials {
             .anyMatch(ref -> "mcpServer".equals(ref.get("resourceType")) && serverId.equals(ref.get("resourceId")))) return;
         throw new IllegalArgumentException("Credential scope does not include this MCP server");
     }
-    private static Mono<String> exchange(ControlPlane cp, String name, AccessKeyCredential sts, String wat) {
+    private Mono<String> exchange(ControlPlane cp, String name, AccessKeyCredential sts, String wat) {
         return Mono.fromCallable(() -> {
             var config = new Config().setAccessKeyId(sts.accessKeyId()).setAccessKeySecret(sts.accessKeySecret())
                 .setSecurityToken(sts.securityToken()).setRegionId(cp.regionId()).setEndpoint("agentidentitydata." + cp.regionId() + ".aliyuncs.com");
+            if (identityEndpoint != null) config.setEndpoint(identityEndpoint.getAuthority()).setProtocol(identityEndpoint.getScheme());
             var client = new com.aliyun.teaopenapi.Client(config);
             var params = new Params().setAction("GetResourceAPIKey").setVersion("2025-11-27").setProtocol("HTTPS")
                 .setPathname("/").setMethod("POST").setAuthType("AK").setStyle("RPC").setReqBodyType("formData").setBodyType("json");
@@ -55,17 +68,17 @@ public final class BoundCredentials {
             } catch (com.aliyun.tea.TeaException error) {
                 var data = error.getData();
                 Object id = data == null ? null : data.getOrDefault("RequestId", data.get("requestId"));
-                Integer status = data != null && data.get("statusCode") instanceof Number n ? n.intValue() : error.getStatusCode();
+                Integer status = error.getStatusCode();
+                if (data != null && data.get("statusCode") instanceof Number n) status = n.intValue();
                 Object message = data == null ? null : data.getOrDefault("Message", data.get("message"));
+                var code = error.getCode();
                 var failure = new AgentCoreException("GetResourceAPIKey", status, id instanceof String s ? s : null,
-                    error.getCode(), message instanceof String s ? s : error.getMessage(), error);
+                    code, message instanceof String s ? s : error.getMessage(), isWatRejection(code) ? null : error);
                 org.slf4j.LoggerFactory.getLogger(BoundCredentials.class).warn(
                     "agentcore.credential.api.failed operation=GetResourceAPIKey provider_name={} host={} status={} code={} requestId={} message={}",
                     cp.workspaceId() + "-" + name, config.getEndpoint(), failure.status(), failure.serviceCode(), failure.requestId(), failure.serviceMessage());
-                if (List.of("WORKLOAD_ACCESS_TOKEN_EXPIRED", "WORKLOAD_ACCESS_TOKEN_INVALID").contains(error.getCode())) throw new WatRejected();
                 throw failure;
             }
         }).subscribeOn(Schedulers.boundedElastic());
     }
-    private static final class WatRejected extends RuntimeException {}
 }
