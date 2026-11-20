@@ -9,6 +9,7 @@
 | 你想做什么 | 入口 |
 | --- | --- |
 | 连接平台上的模型、MCP 和 Skill | [云端资源](#使用云端资源) |
+| 在本地调用高代码 Agent 的平台模型和 MCP | [本地调试](#本地调试高代码-agent) |
 | 在部署时选择模型、模版、MCP 和 Skill | [环境变量配置](#通过环境变量选择资源) |
 | 使用自己的模型、MCP 或本地 Skill | [自定义资源](#使用自定义资源) |
 | 为 Agent 添加长期记忆 | [Memory](#使用-memory) |
@@ -86,9 +87,17 @@ public class QuickStart {
 
 完整示例见 [CloudResources.java](examples/src/main/java/example/CloudResources.java)。
 
+### 本地调试高代码 Agent
+
+使用 Java SDK `0.1.9` 或更高版本。从 AgentCore 获取该 Agent 的调试 Token，将完整值注入本地进程的 `AGENTCORE_DEBUG_TOKEN` 环境变量，再通过 `AgentCore.auto()` 初始化。沿用上面的模型和 MCP 调用方式，填写该 Agent 已获授权的资源名称。请勿将调试 Token 写入代码或日志。
+
+需要使用 Matrix 协作功能时，请使用平台提供的纳管 Token。
+
 ### 凭证与 MCP Header
 
 在平台创建凭证并授权后，使用 `core.credentials().get(name)` 按名称获取。API Key 凭证通过 `credential.value()` 读取；MCP Header 凭证通过 `credential.asHeaders()` 读取。不要将凭证值写入日志或提交到代码仓库。
+
+SDK 会处理读取托管凭证所需的令牌续期，应用直接调用凭证接口即可。
 
 托管 MCP 可在创建时显式绑定 MCP Header 凭证，并追加固定 Header。只有该 MCP 在凭证允许的应用范围内时才能使用：
 
