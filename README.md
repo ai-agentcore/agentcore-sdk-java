@@ -89,13 +89,13 @@ public class QuickStart {
 
 ### 本地调试高代码 Agent
 
-使用 Java SDK `0.1.9` 或更高版本。从 AgentCore 获取该 Agent 的调试 Token，将完整值注入本地进程的 `AGENTCORE_DEBUG_TOKEN` 环境变量，再通过 `AgentCore.auto()` 初始化。沿用上面的模型和 MCP 调用方式，填写该 Agent 已获授权的资源名称。请勿将调试 Token 写入代码或日志。
+1. 安装 Java SDK `0.1.9` 或更高版本。
+2. 从 AgentCore 获取该 Agent 的调试 Token，将其设为本地进程的 `AGENTCORE_DEBUG_TOKEN` 环境变量。
+3. 用 `AgentCore.auto()` 初始化 SDK，按上方示例调用该 Agent 已获授权的模型或 MCP。
 
 ### 凭证与 MCP Header
 
 在平台创建凭证并授权后，使用 `core.credentials().get(name)` 按名称获取。API Key 凭证通过 `credential.value()` 读取；MCP Header 凭证通过 `credential.asHeaders()` 读取。不要将凭证值写入日志或提交到代码仓库。
-
-SDK 会处理读取托管凭证所需的令牌续期，应用直接调用凭证接口即可。
 
 托管 MCP 可在创建时显式绑定 MCP Header 凭证，并追加固定 Header。只有该 MCP 在凭证允许的应用范围内时才能使用：
 
