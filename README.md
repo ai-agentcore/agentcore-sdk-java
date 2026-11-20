@@ -91,8 +91,6 @@ public class QuickStart {
 
 使用 Java SDK `0.1.9` 或更高版本。从 AgentCore 获取该 Agent 的调试 Token，将完整值注入本地进程的 `AGENTCORE_DEBUG_TOKEN` 环境变量，再通过 `AgentCore.auto()` 初始化。沿用上面的模型和 MCP 调用方式，填写该 Agent 已获授权的资源名称。请勿将调试 Token 写入代码或日志。
 
-需要使用 Matrix 协作功能时，请使用平台提供的纳管 Token。
-
 ### 凭证与 MCP Header
 
 在平台创建凭证并授权后，使用 `core.credentials().get(name)` 按名称获取。API Key 凭证通过 `credential.value()` 读取；MCP Header 凭证通过 `credential.asHeaders()` 读取。不要将凭证值写入日志或提交到代码仓库。
