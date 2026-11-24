@@ -4,6 +4,7 @@ import io.agentcore.auth.AccessKeyCredential;
 import io.agentcore.auth.ControllerCredentials;
 import io.agentcore.auth.CredentialProvider;
 import io.agentcore.controlplane.ControlPlane;
+import io.agentcore.knowledgebase.KnowledgeBase;
 import io.agentcore.memory.MemoryStore;
 import io.agentcore.memory.ContextMemoryClient;
 import io.agentcore.mcp.MCPClient;
@@ -181,6 +182,11 @@ public final class AgentCore implements AutoCloseable {
     public MCPClient stdioMcp(String command, List<String> args, Map<String, String> environment) {
         return track(MCPClient.stdio(command, args, environment));
     }
+    public KnowledgeBase knowledgeBase(String knowledgeBaseId) {
+        checkOpen();
+        return new KnowledgeBase(knowledgeBaseId, this::controlPlane);
+    }
+
     public MemoryStore memory(String name) { checkOpen(); return new MemoryStore(name, this::controlPlane); }
     public ContextMemoryClient contextMemory(String name) { return contextMemory(name, null); }
     public ContextMemoryClient contextMemory(String name, URI endpoint) {

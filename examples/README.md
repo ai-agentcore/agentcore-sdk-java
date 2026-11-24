@@ -4,6 +4,7 @@
 
 | 示例 | 内容 |
 | --- | --- |
+| [KnowledgeBaseExample](src/main/java/example/KnowledgeBaseExample.java) | 原生知识库检索与来源切片 |
 | [CloudResources](src/main/java/example/CloudResources.java) | 托管 Model、MCP、Skill、Memory |
 | [EnvironmentResources](src/main/java/example/EnvironmentResources.java) | 通过环境变量选择默认模型、AgentSpec、多个 MCP 和 Skill |
 | [AgentTemplateExample](src/main/java/example/AgentTemplateExample.java) | 加载模版的 Prompt、Skill，接入独立配置的 LangChain4j 模型 |
