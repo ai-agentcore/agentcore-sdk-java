@@ -12,6 +12,7 @@
 | 在本地调用高代码 Agent 的平台模型和 MCP | [本地调试](#本地调试高代码-agent) |
 | 在部署时选择模型、模版、MCP 和 Skill | [环境变量配置](#通过环境变量选择资源) |
 | 使用自己的模型、MCP 或本地 Skill | [自定义资源](#使用自定义资源) |
+| 检索原生知识库中的文档 | [原生知识库](#使用原生知识库) |
 | 为 Agent 添加长期记忆 | [Memory](#使用-memory) |
 | 为自有 harness 显式采集事件和召回 | [原生 Context Memory](docs/context-memory.md) |
 | 配置 MCP 凭证与固定 Header | [凭证与 Header](#凭证与-mcp-header) |
@@ -210,6 +211,23 @@ try (var core = AgentCore.auto()) {
 显式传资源名时保持原有行为，不继承默认连接的模型名称或默认 AgentSpec 的版本；省略资源名时，也可显式传模型名称或版本覆盖对应默认值。MCP／Skill 未配置时批量入口返回空列表，配置为 `[]` 也表示不加载；非法 JSON 或列表项会在调用相应入口时报错。
 
 只需配置实际使用的资源。SDK 不自动加载这些资源，也不自动将 AgentSpec 内的 Skill 与环境变量 Skill 合并。同一个已初始化客户端不会随环境变量变化自动切换资源；修改后请重新创建客户端或重新部署。认证与访问权限的配置方式不变。
+
+## 使用原生知识库
+
+在 AgentCore 中准备知识库并完成文档导入，确认应用具有该知识库的检索权限。使用同一 Workspace 下的知识库 ID 进行检索：
+
+```java
+try (var core = AgentCore.auto()) {
+    var result = core.knowledgeBase("你的知识库 ID").search("产品如何配置？").block();
+    for (var chunk : result.chunks()) {
+        System.out.println(chunk.fileName() + ": " + chunk.content());
+    }
+}
+```
+
+`search` 返回 `Mono<SearchResult>`，可直接组合到异步调用链中。返回结果包含切片正文、文档来源和相关性评分，可将正文作为上下文传给 Agent。支持关键词、向量、混合检索，以及重排和元数据过滤；省略的参数沿用知识库配置。评分用于排序，不代表准确率。
+
+完整示例见 [知识库检索](examples/src/main/java/example/KnowledgeBaseExample.java)。
 
 ## 使用 Memory
 
